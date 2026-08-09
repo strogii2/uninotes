@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="ro" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>UniNotes — Notițe pentru universitate</title>
+<meta name="description" content="Aplicație de notițe pentru studenți: organizare pe materii, căutare rapidă, editor Markdown.">
+<meta name="theme-color" content="#2563EB">
+<meta name="color-scheme" content="light dark">
+
+<!-- instalare pe ecranul principal (iPhone / Android) -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="UniNotes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="format-detection" content="telephone=no">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232563EB'/><path d='M9 9h14M9 15h14M9 21h9' stroke='white' stroke-width='2.5' stroke-linecap='round'/></svg>">
+</head>
+<body>
+
+<!-- ============ ICON SPRITE ============ -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3.5 2.6 5.3 5.9.9-4.25 4.14 1 5.86L12 16.94 6.75 19.7l1-5.86L3.5 9.7l5.9-.9z"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 3h6l-1 6 4 3v2H6v-2l4-3z"/><path d="M12 14v7"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19a2 2 0 0 1 2-2h13"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><path d="M10 12h4"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 11l5 5 5-5"/><path d="M4 20h16"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 21V9M7 13l5-5 5 5"/><path d="M4 4h16"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.5"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16z"/><path d="m14 6 4 4"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12V5a2 2 0 0 1 2-2h7l9 9-9 9z"/><circle cx="7.5" cy="7.5" r="1.2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+  <symbol id="i-bold" viewBox="0 0 24 24"><path d="M7 4h6a4 4 0 0 1 0 8H7zM7 12h7a4 4 0 0 1 0 8H7z"/></symbol>
+  <symbol id="i-italic" viewBox="0 0 24 24"><path d="M14 4h-4M14 20h-4M15 4 9 20"/></symbol>
+  <symbol id="i-heading" viewBox="0 0 24 24"><path d="M5 5v14M15 5v14M5 12h10"/><path d="M18 8v11"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h12M9 12h12M9 18h12"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></symbol>
+  <symbol id="i-todo" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="7" rx="1.5"/><path d="m4.5 7.5 2 2 3-3.5"/><path d="M13 7h8M13 17h8"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 8-4 4 4 4M16 8l4 4-4 4"/></symbol>
+  <symbol id="i-quote" viewBox="0 0 24 24"><path d="M6 17c-2 0-3-1.5-3-3.5S4.5 9 7 8"/><path d="M17 17c-2 0-3-1.5-3-3.5S15.5 9 18 8"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a4 4 0 0 0 5.7 0l2.6-2.6a4 4 0 1 0-5.7-5.7L11 6.3"/><path d="M14 11a4 4 0 0 0-5.7 0l-2.6 2.6a4 4 0 1 0 5.7 5.7L13 17.7"/></symbol>
+  <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 9V3h10v6"/><rect x="4" y="9" width="16" height="7" rx="2"/><path d="M7 14h10v7H7z"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></symbol>
+  <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M8 14h8"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 4.9L19 9.7l-5.2 1.8L12 16.4l-1.8-4.9L5 9.7l5.2-1.8z"/><path d="M18.5 15.5l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-restore" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.6"/><path d="M4 4v5h5"/></symbol>
+</svg>
+
+<!-- ============ APP ============ -->
+<div class="app" id="app" data-pane="list">
+
+  <!-- ---------- SIDEBAR ---------- -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand__mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M6 4h12M6 10h12M6 16h7" stroke-width="2.4"/></svg>
+      </div>
+      <div class="brand__text">
+        <strong>UniNotes</strong>
+        <span id="brandSub">notițe de facultate</span>
+      </div>
+      <button class="icon-btn sidebar__close" id="sidebarClose" aria-label="Închide meniul">
+        <svg class="ic"><use href="#i-x"></use></svg>
+      </button>
+    </div>
+
+    <button class="btn btn--primary btn--block" id="newNoteBtn">
+      <svg class="ic"><use href="#i-plus"></use></svg>
+      Notiță nouă
+    </button>
+
+    <nav class="nav" aria-label="Filtre">
+      <button class="nav__item is-active" data-filter="all">
+        <svg class="ic"><use href="#i-layers"></use></svg>
+        <span>Toate notițele</span>
+        <em class="count" id="cAll">0</em>
+      </button>
+      <button class="nav__item" data-filter="fav">
+        <svg class="ic"><use href="#i-star"></use></svg>
+        <span>Favorite</span>
+        <em class="count" id="cFav">0</em>
+      </button>
+      <button class="nav__item" data-filter="archive">
+        <svg class="ic"><use href="#i-archive"></use></svg>
+        <span>Arhivă</span>
+        <em class="count" id="cArch">0</em>
+      </button>
+    </nav>
+
+    <div class="section-head">
+      <h2>Materii</h2>
+      <button class="icon-btn icon-btn--sm" id="addSubjectBtn" aria-label="Adaugă materie" title="Adaugă materie">
+        <svg class="ic"><use href="#i-plus"></use></svg>
+      </button>
+    </div>
+    <div class="subjects" id="subjectList" role="list"></div>
+
+    <div class="section-head">
+      <h2>Etichete</h2>
+    </div>
+    <div class="tagcloud" id="tagCloud"></div>
+
+    <div class="sidebar__foot">
+      <button class="ghost-btn" id="themeBtn">
+        <svg class="ic"><use href="#i-moon"></use></svg>
+        <span id="themeLabel">Mod întunecat</span>
+      </button>
+      <div class="foot-row">
+        <button class="ghost-btn" id="exportAllBtn" title="Salvează o copie de siguranță (.json)">
+          <svg class="ic"><use href="#i-download"></use></svg> Backup
+        </button>
+        <button class="ghost-btn" id="importBtn" title="Încarcă o copie de siguranță">
+          <svg class="ic"><use href="#i-upload"></use></svg> Import
+        </button>
+        <button class="ghost-btn" id="helpBtn" title="Scurtături de tastatură">
+          <svg class="ic"><use href="#i-keyboard"></use></svg> Taste
+        </button>
+      </div>
+      <button class="ghost-btn" id="dataFolderBtn" hidden>
+        <svg class="ic"><use href="#i-folder"></use></svg>
+        <span>Folderul cu notițe</span>
+      </button>
+      <input type="file" id="importInput" accept="application/json" hidden>
+    </div>
+  </aside>
+  <div class="scrim" id="scrim" hidden></div>
+
+  <!-- ---------- LISTA DE NOTIȚE ---------- -->
+  <section class="list-pane" aria-label="Lista de notițe">
+    <header class="list-head">
+      <button class="icon-btn only-mobile" id="menuBtn" aria-label="Deschide meniul">
+        <svg class="ic"><use href="#i-menu"></use></svg>
+      </button>
+      <div class="search">
+        <svg class="ic search__icon"><use href="#i-search"></use></svg>
+        <input type="search" id="searchInput" placeholder="Caută în notițe…" aria-label="Caută în notițe" autocomplete="off">
+        <kbd class="search__kbd">Ctrl K</kbd>
+      </div>
+      <button class="icon-btn icon-btn--accent only-mobile" id="newNoteBtnSm" aria-label="Notiță nouă">
+        <svg class="ic"><use href="#i-plus"></use></svg>
+      </button>
+    </header>
+
+    <div class="list-sub">
+      <h1 class="list-title" id="listTitle">Toate notițele</h1>
+      <label class="sort">
+        <span class="sr-only">Sortează</span>
+        <select id="sortSelect">
+          <option value="updated">Modificate recent</option>
+          <option value="created">Create recent</option>
+          <option value="title">Alfabetic</option>
+          <option value="subject">După materie</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="notes" id="notesList" role="list"></div>
+  </section>
+
+  <!-- ---------- EDITOR ---------- -->
+  <main class="editor-pane" id="editorPane" aria-label="Editor">
+    <div class="empty" id="emptyState">
+      <div class="empty__art" aria-hidden="true">
+        <svg viewBox="0 0 24 24" class="ic"><use href="#i-sparkle"></use></svg>
+      </div>
+      <h2>Nicio notiță selectată</h2>
+      <p>Alege o notiță din listă sau creează una nouă ca să începi.</p>
+      <button class="btn btn--primary" id="emptyNewBtn">
+        <svg class="ic"><use href="#i-plus"></use></svg> Notiță nouă
+      </button>
+    </div>
+
+    <div class="editor" id="editor" hidden>
+      <header class="editor__top">
+        <button class="icon-btn only-mobile" id="backBtn" aria-label="Înapoi la listă">
+          <svg class="ic"><use href="#i-back"></use></svg>
+        </button>
+
+        <label class="subject-pick">
+          <span class="sr-only">Materie</span>
+          <span class="dot" id="subjDot"></span>
+          <select id="subjectSelect"></select>
+        </label>
+
+        <div class="spacer"></div>
+
+        <button class="icon-btn" id="pinBtn" aria-pressed="false" title="Fixează sus (Ctrl+Shift+P)" aria-label="Fixează sus">
+          <svg class="ic"><use href="#i-pin"></use></svg>
+        </button>
+        <button class="icon-btn" id="favBtn" aria-pressed="false" title="Favorită (Ctrl+D)" aria-label="Favorită">
+          <svg class="ic"><use href="#i-star"></use></svg>
+        </button>
+        <button class="icon-btn" id="previewBtn" aria-pressed="false" title="Previzualizare (Ctrl+P)" aria-label="Previzualizare">
+          <svg class="ic"><use href="#i-eye"></use></svg>
+        </button>
+        <div class="menu-wrap">
+          <button class="icon-btn" id="moreBtn" aria-haspopup="true" aria-expanded="false" aria-label="Mai multe opțiuni">
+            <svg class="ic"><use href="#i-dots"></use></svg>
+          </button>
+          <div class="menu" id="moreMenu" hidden role="menu">
+            <button role="menuitem" data-act="export"><svg class="ic"><use href="#i-download"></use></svg> Exportă ca .md</button>
+            <button role="menuitem" data-act="print"><svg class="ic"><use href="#i-print"></use></svg> Printează / PDF</button>
+            <button role="menuitem" data-act="duplicate"><svg class="ic"><use href="#i-layers"></use></svg> Duplică</button>
+            <button role="menuitem" data-act="archive"><svg class="ic"><use href="#i-archive"></use></svg> <span id="archLabel">Arhivează</span></button>
+            <button role="menuitem" data-act="delete" class="is-danger"><svg class="ic"><use href="#i-trash"></use></svg> Șterge</button>
+          </div>
+        </div>
+      </header>
+
+      <div class="editor__scroll" id="editorScroll">
+        <input class="title-input" id="titleInput" placeholder="Titlul notiței…" aria-label="Titlu">
+
+        <div class="tags-row" id="tagsRow">
+          <svg class="ic tags-row__icon"><use href="#i-tag"></use></svg>
+          <div class="chips" id="tagChips"></div>
+          <input id="tagInput" class="tag-input" placeholder="adaugă etichetă…" aria-label="Adaugă etichetă" autocomplete="off">
+        </div>
+
+        <div class="toolbar" id="toolbar" role="toolbar" aria-label="Formatare">
+          <button class="tool" data-md="h" title="Titlu"><svg class="ic"><use href="#i-heading"></use></svg></button>
+          <button class="tool" data-md="b" title="Îngroșat (Ctrl+B)"><svg class="ic"><use href="#i-bold"></use></svg></button>
+          <button class="tool" data-md="i" title="Înclinat (Ctrl+I)"><svg class="ic"><use href="#i-italic"></use></svg></button>
+          <span class="tool-sep"></span>
+          <button class="tool" data-md="ul" title="Listă"><svg class="ic"><use href="#i-list"></use></svg></button>
+          <button class="tool" data-md="todo" title="Listă de bifat"><svg class="ic"><use href="#i-todo"></use></svg></button>
+          <button class="tool" data-md="quote" title="Citat"><svg class="ic"><use href="#i-quote"></use></svg></button>
+          <button class="tool" data-md="code" title="Cod"><svg class="ic"><use href="#i-code"></use></svg></button>
+          <button class="tool" data-md="link" title="Link"><svg class="ic"><use href="#i-link"></use></svg></button>
+        </div>
+
+        <textarea class="content-input" id="contentInput" spellcheck="true"
+          placeholder="Scrie aici… Markdown funcționează: # titlu, **îngroșat**, - listă, - [ ] de făcut, `cod`, > citat"></textarea>
+
+        <article class="preview md" id="previewPane" hidden></article>
+      </div>
+
+      <footer class="editor__foot">
+        <span id="statMeta">—</span>
+        <span class="spacer"></span>
+        <span class="saved" id="savedFlag">Salvat automat</span>
+      </footer>
+    </div>
+  </main>
+</div>
+
+<!-- ============ MODALE ============ -->
+<dialog class="modal" id="subjectModal">
+  <form method="dialog" class="modal__body" id="subjectForm">
+    <h2 class="modal__title" id="subjectModalTitle">Materie nouă</h2>
+    <label class="field">
+      <span>Denumire</span>
+      <input id="subjName" required maxlength="60" placeholder="ex. Analiză Matematică">
+    </label>
+    <label class="field">
+      <span>Profesor <em>(opțional)</em></span>
+      <input id="subjProf" maxlength="60" placeholder="ex. Prof. Ionescu">
+    </label>
+    <fieldset class="field">
+      <span>Culoare</span>
+      <div class="swatches" id="swatches"></div>
+    </fieldset>
+    <div class="modal__actions">
+      <button type="button" class="btn btn--danger-ghost" id="subjDelete" hidden>Șterge materia</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn btn--ghost" data-close>Renunță</button>
+      <button type="submit" class="btn btn--primary">Salvează</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="modal" id="confirmModal">
+  <div class="modal__body">
+    <h2 class="modal__title" id="confirmTitle">Ești sigur?</h2>
+    <p class="modal__text" id="confirmText"></p>
+    <div class="modal__actions">
+      <span class="spacer"></span>
+      <button class="btn btn--ghost" id="confirmNo">Renunță</button>
+      <button class="btn btn--danger" id="confirmYes">Confirmă</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="modal" id="helpModal">
+  <div class="modal__body">
+    <h2 class="modal__title">Scurtături de tastatură</h2>
+    <ul class="keys">
+      <li><kbd>Ctrl</kbd><kbd>N</kbd><span>Notiță nouă</span></li>
+      <li><kbd>Ctrl</kbd><kbd>K</kbd><span>Caută</span></li>
+      <li><kbd>Ctrl</kbd><kbd>S</kbd><span>Salvează acum</span></li>
+      <li><kbd>Ctrl</kbd><kbd>P</kbd><span>Previzualizare Markdown</span></li>
+      <li><kbd>Ctrl</kbd><kbd>D</kbd><span>Marchează favorită</span></li>
+      <li><kbd>Ctrl</kbd><kbd>B</kbd> / <kbd>Ctrl</kbd><kbd>I</kbd><span>Îngroșat / înclinat</span></li>
+      <li><kbd>Esc</kbd><span>Închide fereastra</span></li>
+    </ul>
+    <h3 class="modal__sub">Markdown acceptat</h3>
+    <p class="modal__text"><code># Titlu</code>, <code>**îngroșat**</code>, <code>*înclinat*</code>, <code>- listă</code>, <code>1. numerotat</code>, <code>- [ ] de făcut</code>, <code>&gt; citat</code>, <code>`cod`</code>, <code>```bloc```</code>, <code>[link](url)</code>, <code>---</code>, <code>| tabel |</code></p>
+    <div class="modal__actions">
+      <span class="spacer"></span>
+      <button class="btn btn--primary" data-close>Am înțeles</button>
+    </div>
+  </div>
+</dialog>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<!-- se arată doar în Safari pe iPhone, cât timp aplicația nu e încă instalată -->
+<div class="install-hint" id="installHint" hidden>
+  <svg class="ic install-hint__share" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M12 15V4M8.5 7.5 12 4l3.5 3.5"/>
+    <path d="M6 12v7a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-7"/>
+  </svg>
+  <p>Instaleaz-o pe telefon: apasă <strong>Partajează</strong>, apoi
+     <strong>Adaugă pe ecranul principal</strong>.</p>
+  <button class="icon-btn icon-btn--sm" id="installHintClose" aria-label="Închide">
+    <svg class="ic"><use href="#i-x"></use></svg>
+  </button>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

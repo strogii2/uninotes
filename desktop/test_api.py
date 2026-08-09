@@ -1,0 +1,68 @@
+"""
+Verifică puntea de fișiere (export .md, import .json, pregătirea paginii de printare)
+fără să deschidă dialoguri sau ferestre: înlocuim dialogul și os.startfile.
+"""
+
+import json
+import os
+import tempfile
+from pathlib import Path
+
+import main as app
+
+rezultate = {}
+tmp = Path(tempfile.mkdtemp(prefix="uninotes-test-"))
+
+
+class FereastraFalsa:
+    """Ține locul ferestrei reale: întoarce o cale în loc să deschidă dialogul."""
+
+    def __init__(self, cale):
+        self.cale = cale
+
+    def create_file_dialog(self, *args, **kwargs):
+        return (str(self.cale),)
+
+
+api = app.Api()
+
+# --- export .md ---
+tinta = tmp / "notita.md"
+api.window = FereastraFalsa(tinta)
+continut = "# Titlu cu diacritice\n\n- [ ] ceva de făcut\n\nȘțîâă"
+cale = api.save_file("notita.md", continut)
+rezultate["export_cale_intoarsa"] = cale is not None
+rezultate["export_continut_identic"] = tinta.read_text(encoding="utf-8") == continut
+
+# --- import .json ---
+sursa = tmp / "backup.json"
+sursa.write_text(json.dumps({"notes": [{"title": "Notiță importată"}]}, ensure_ascii=False),
+                 encoding="utf-8")
+api.window = FereastraFalsa(sursa)
+adus = api.open_file()
+rezultate["import_nume"] = adus["name"]
+rezultate["import_titlu"] = json.loads(adus["content"])["notes"][0]["title"]
+
+# --- pagina de printare ---
+deschise = []
+original_startfile = os.startfile
+os.startfile = lambda p: deschise.append(p)          # nu deschidem nimic pe ecran
+try:
+    ok = api.print_note("Curs 1 — Limite", "<h2>Test</h2><p>corp</p>", "body{margin:0}")
+finally:
+    os.startfile = original_startfile
+rezultate["printare_ok"] = ok
+rezultate["printare_fisier_scris"] = bool(deschise) and Path(deschise[0]).exists()
+if deschise:
+    html = Path(deschise[0]).read_text(encoding="utf-8")
+    rezultate["printare_contine_titlul"] = "Curs 1 — Limite" in html
+    rezultate["printare_contine_corpul"] = "<p>corp</p>" in html
+
+# --- scriere/citire date, cu fișier stricat ---
+api.window = None
+rezultate["salvare_date"] = api.save_data({"notes": [], "subjects": [], "settings": {}})["ok"]
+app.DATA_FILE.write_text("{ asta nu e json valid", encoding="utf-8")
+rezultate["json_stricat_nu_arunca"] = api.load_data() is None
+rezultate["json_stricat_pus_deoparte"] = app.DATA_FILE.with_suffix(".json.stricat").exists()
+
+print("REZULTAT " + json.dumps(rezultate, ensure_ascii=False))

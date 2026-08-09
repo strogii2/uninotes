@@ -1,0 +1,79 @@
+"""
+Verificare automată a aplicației desktop: pornește fereastra, folosește interfața
+din interior și confirmă că notițele ajung în fișierul de pe disc. Apoi închide.
+"""
+
+import json
+import time
+
+import webview
+
+import main as app
+
+
+def probe(window):
+    out = {}
+    try:
+        time.sleep(4)                      # lăsăm WebView2 să încarce pagina
+
+        out["punte_activa"] = window.evaluate_js("!!(window.pywebview && window.pywebview.api)")
+        out["carduri_afisate"] = window.evaluate_js("document.querySelectorAll('.note-card').length")
+        out["buton_folder_vizibil"] = window.evaluate_js(
+            "!document.querySelector('#dataFolderBtn').hidden")
+        out["erori_js"] = window.evaluate_js(
+            "window.__erori ? window.__erori.length : 0")
+
+        window.evaluate_js("""
+            document.querySelector('#newNoteBtn').click();
+            var t = document.querySelector('#titleInput');
+            t.value = 'Proba de scriere pe disc';
+            t.dispatchEvent(new Event('input', {bubbles:true}));
+            var c = document.querySelector('#contentInput');
+            c.value = '- [ ] verificat salvarea\\n\\nText cu diacritice: ăâîșț';
+            c.dispatchEvent(new Event('input', {bubbles:true}));
+            'ok'
+        """)
+        time.sleep(2)
+
+        out["fisier_exista"] = app.DATA_FILE.exists()
+        if app.DATA_FILE.exists():
+            data = json.loads(app.DATA_FILE.read_text(encoding="utf-8"))
+            notes = data.get("notes", [])
+            out["notite_in_fisier"] = len(notes)
+            proba = next((n for n in notes if n.get("title") == "Proba de scriere pe disc"), None)
+            out["proba_salvata"] = proba is not None
+            out["diacritice_ok"] = bool(proba and "ăâîșț" in proba.get("content", ""))
+            out["materii_in_fisier"] = len(data.get("subjects", []))
+
+        # ne asigurăm că previzualizarea Markdown merge și în WebView2
+        out["preview_html"] = window.evaluate_js("""
+            document.querySelector('#previewBtn').click();
+            document.querySelectorAll('#previewPane input[type=checkbox]').length
+        """)
+    except Exception as exc:                                  # noqa: BLE001
+        out["exceptie"] = repr(exc)
+    finally:
+        print("REZULTAT " + json.dumps(out, ensure_ascii=False))
+        window.destroy()
+
+
+def run():
+    if app.DATA_FILE.exists():
+        app.DATA_FILE.unlink()                                # pornim de la zero
+
+    api = app.Api()
+    window = webview.create_window(
+        "UniNotes",
+        url="http://127.0.0.1:%d/index.html?desktop=1" % app.start_local_server(),
+        js_api=api,
+        width=1320,
+        height=860,
+        background_color="#F5F7FB",
+    )
+    api.window = window
+    webview.start(probe, window, gui="edgechromium", private_mode=False,
+                  storage_path=str(app.DATA_DIR / ".fereastra"))
+
+
+if __name__ == "__main__":
+    run()

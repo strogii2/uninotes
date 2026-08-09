@@ -1,0 +1,10 @@
+# notițele tale — rămân pe calculator, nu se publică
+Notite UniNotes/
+
+# executabilul (13 MB) — se atașează la un Release, nu se ține în depozit
+UniNotes.exe
+
+# unelte de compilare
+.build/
+__pycache__/
+*.pyc
