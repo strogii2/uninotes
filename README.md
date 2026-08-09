@@ -1,9 +1,33 @@
 # UniNotes — notițe pentru universitate
 
-Aplicație de notițe pentru studenți. Program Windows de sine stătător: fereastră proprie,
-iconiță în bara de activități, fără browser și fără cont.
+Aplicație de notițe pentru studenți. Aceeași aplicație rulează în trei feluri: program
+Windows de sine stătător, aplicație instalată pe telefon, sau direct în browser.
 
-## Cum o pornești
+**Online:** https://strogii2.github.io/uninotes/
+
+## Pe telefon (iPhone și Android)
+
+Deschide **https://strogii2.github.io/uninotes/** pe telefon și instaleaz-o pe ecranul
+principal:
+
+- **iPhone (Safari):** apasă butonul **Partajează** (pătratul cu săgeata în sus) →
+  derulează în jos → **Adaugă pe ecranul principal** → *Adaugă*.
+  Trebuie folosit Safari; din Chrome pe iPhone opțiunea nu apare.
+- **Android (Chrome):** meniul `⋮` → **Instalează aplicația** (sau *Adaugă pe ecranul
+  principal*).
+
+După instalare capătă iconiță proprie, se deschide pe tot ecranul fără bara de browser și
+**merge fără internet** — tot ce îi trebuie e ținut în telefon de la prima deschidere.
+
+Notițele de pe telefon sunt separate de cele de pe calculator; nu se sincronizează între
+ele. Ca să le muți dintr-o parte în alta, folosește **Backup** (export `.json`) pe un
+dispozitiv și **Import** pe celălalt.
+
+> Pe iPhone nu se poate face o aplicație din App Store fără un Mac și un cont de
+> dezvoltator Apple plătit. Varianta instalată din Safari e cea mai apropiată de o
+> aplicație adevărată și, la folosirea de zi cu zi, se comportă la fel.
+
+## Pe calculator: cum o pornești
 
 Dublu-click pe **`UniNotes.exe`**, sau pe scurtătura **UniNotes** de pe desktop.
 
@@ -67,6 +91,11 @@ Dacă fișierul ajunge totuși corupt, aplicația îl pune deoparte ca `notite.j
 | `index.html` | structura interfeței și setul de iconițe SVG |
 | `styles.css` | culorile, temele light/dark, layout-ul |
 | `app.js` | starea, salvarea, parserul Markdown, toate interacțiunile |
+| `manifest.webmanifest` | datele de instalare pe telefon (nume, iconițe, culori) |
+| `sw.js` | service worker — ține aplicația în telefon ca să meargă offline |
+| `icons\` | iconițele pentru iOS și Android |
+| `desktop\make_png_icons.py` | generează iconițele pentru telefon |
+| `desktop\server_telefon.py` | server local cu listă albă, pentru testat pe telefon în rețea |
 | `desktop\main.py` | fereastra nativă și puntea către fișierele de pe disc |
 | `desktop\icon.ico` | iconița aplicației |
 | `desktop\make_icon.py` | generează iconița |
