@@ -1376,6 +1376,48 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
                  .sort((a, b) => inMinute(a.start) - inMinute(b.start));
   }
 
+  /* ---------- săptămâni pare și impare ---------- */
+
+  /** Lunea, la miezul nopții, din săptămâna datei date. */
+  function luniDin(data) {
+    const d = new Date(data);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    return d.getTime();
+  }
+
+  /**
+   * Paritatea săptămânii în curs. Utilizatorul spune o singură dată „asta e pară";
+   * de acolo încolo se numără săptămânile scurse, deci nu mai trebuie atins nimic.
+   * Întoarce null dacă nu s-a stabilit — atunci nu filtrăm nimic.
+   */
+  function saptamanaCurenta() {
+    const p = orar().paritate;
+    if (!p || (p.tip !== 'para' && p.tip !== 'impara')) return null;
+    if (!isFinite(p.deLa)) return null;                 // fișier editat de mână
+    const saptamani = Math.round((luniDin(new Date()) - p.deLa) / 604800000);
+    const inversat = Math.abs(saptamani) % 2 === 1;
+    return inversat ? (p.tip === 'para' ? 'impara' : 'para') : p.tip;
+  }
+
+  /** Ora are loc în săptămâna dată? Fără paritate cunoscută, toate contează. */
+  function seTineAcum(o, saptamana) {
+    if (!o.saptamana || o.saptamana === 'toate') return true;
+    if (!saptamana) return true;
+    return o.saptamana === saptamana;
+  }
+
+  /** Orele zilei care chiar au loc săptămâna asta — pentru „azi", „acum", „urmează". */
+  function oreZiActive(z) {
+    const s = saptamanaCurenta();
+    return oreZi(z).filter(o => seTineAcum(o, s));
+  }
+
+  /** Există măcar o oră care ține doar de o săptămână? Altfel setarea e zgomot. */
+  function areSaptamaniAlternative() {
+    return orar().entries.some(o => o.saptamana === 'para' || o.saptamana === 'impara');
+  }
+
   /** „Analiză Matematică” și „analiza matematica” trebuie să se potrivească. */
   const HARTA_DIACRITICE = { 'ă': 'a', 'â': 'a', 'î': 'i', 'ș': 's', 'ş': 's', 'ț': 't', 'ţ': 't' };
   function faraDiacritice(s) {
@@ -1402,7 +1444,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
 
   function oraCurenta() {
     const acum = minAcum();
-    return oreZi(ziAzi()).find(o => inMinute(o.start) <= acum && acum < inMinute(o.end)) || null;
+    return oreZiActive(ziAzi()).find(o => inMinute(o.start) <= acum && acum < inMinute(o.end)) || null;
   }
 
   /** Prima oră care urmează, căutând înainte prin săptămână. */
@@ -1410,7 +1452,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     const azi = ziAzi(), acum = minAcum();
     for (let d = 0; d < 7; d++) {
       const z = (azi + d) % 7;
-      const lista = oreZi(z);
+      const lista = oreZiActive(z);
       for (let i = 0; i < lista.length; i++) {
         const start = inMinute(lista[i].start);
         if (d === 0 && start <= acum) continue;
@@ -1426,7 +1468,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     if (oraCurenta()) return 'acum';
     const urm = urmatoareaOra();
     if (urm && urm.zi === ziAzi() && urm.peste < 1440) return urm.ora.start;
-    const azi = oreZi(ziAzi()).length;
+    const azi = oreZiActive(ziAzi()).length;
     return azi ? String(azi) : '—';
   }
 
@@ -1447,7 +1489,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   function renderAzi() {
     const el = $('#aziCard');
     if (!el) return;
-    const lista = oreZi(ziAzi()), acum = minAcum();
+    const lista = oreZiActive(ziAzi()), acum = minAcum();
     let html = '<p class="azi__zi">Astăzi</p><p class="azi__titlu">' +
                escapeHtml(cuMajuscula(fmtZi.format(new Date()))) + '</p>';
 
@@ -1476,21 +1518,73 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         html += '<div class="azi__rand' + cls + '">' +
                 '<span class="azi__ora">' + escapeHtml(o.start) + '</span>' +
                 '<span class="azi__nume">' + escapeHtml(o.materie || 'Fără nume') + '</span>' +
-                eticheta + '</div>';
+                eticheta +
+                '<button type="button" class="azi__nota" data-ora="' + escapeHtml(o.id) + '"' +
+                ' title="Notiță nouă pentru ora asta"' +
+                ' aria-label="Notiță nouă pentru ' + escapeHtml(o.materie || 'ora asta') + '">' +
+                '<svg class="ic"><use href="#i-edit"></use></svg></button>' +
+                '</div>';
       });
       html += '</div>';
     }
     el.innerHTML = html;
   }
 
+  /**
+   * Notiță pornită pentru o oră anume: materia, tipul, numărul de ordine și
+   * antetul cu data sunt deja completate, ca la curs să scrii direct.
+   */
+  function notitaDinOra(o) {
+    let subjectId = o.subjectId || potrivesteMaterie(o.materie);
+    if (!subjectId && o.materie) {              // altfel notița ar rămâne fără materie
+      const s = {
+        id: uid(), name: o.materie, prof: o.profesor || '',
+        color: PALETTE[db.subjects.length % PALETTE.length]
+      };
+      db.subjects.push(s);
+      subjectId = s.id;
+      o.subjectId = s.id;
+    }
+
+    const tip = o.tip || 'curs';
+    const dejaScrise = db.notes.filter(n =>
+      n.subjectId === subjectId && (n.tags || []).indexOf(tip) >= 0).length;
+    const antet = cuMajuscula(fmtZi.format(new Date())) + ' · ' + o.start + '–' + o.end +
+                  (o.sala ? ' · ' + o.sala : '');
+
+    const nota = {
+      id: uid(), subjectId: subjectId,
+      title: cuMajuscula(tip) + ' ' + (dejaScrise + 1) + ' — ' + (o.materie || 'Fără nume'),
+      content: '*' + antet + '*\n\n',
+      tags: [tip], pinned: false, favorite: false, archived: false,
+      createdAt: now(), updatedAt: now()
+    };
+    db.notes.unshift(nota);
+    ui.activeId = nota.id;
+    ui.preview = false;
+    ui.filter = { type: 'all', subjectId: null, tag: null };
+    persist();
+
+    inchideOrar();
+    renderSidebar(); renderList(); renderEditor();
+    showPane('editor');
+    // cursorul direct în text: titlul e deja scris
+    const ta = $('#contentInput');
+    if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+    toast('Notiță pornită: ' + nota.title, 'ok');
+  }
+
   function cardOra(o, esteAzi) {
     const s = o.subjectId ? db.subjects.find(x => x.id === o.subjectId) : null;
     const acum = minAcum();
-    const eAcum = esteAzi && inMinute(o.start) <= acum && acum < inMinute(o.end);
+    const activa = seTineAcum(o, saptamanaCurenta());
+    const eAcum = esteAzi && activa && inMinute(o.start) <= acum && acum < inMinute(o.end);
 
     const card = document.createElement('div');
-    card.className = 'ora-card' + (eAcum ? ' e-acum' : '');
+    // orele din cealaltă săptămână rămân vizibile, dar stinse: se vede că există
+    card.className = 'ora-card' + (eAcum ? ' e-acum' : '') + (activa ? '' : ' e-alta-saptamana');
     card.style.borderLeftColor = s ? s.color : 'var(--border-strong)';
+    if (!activa) card.title = 'Nu are loc săptămâna asta';
 
     const meta = [];
     if (o.tip) meta.push('<span class="tip-pill t-' + escapeHtml(o.tip) + '">' + escapeHtml(o.tip) + '</span>');
@@ -1585,6 +1679,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     });
 
     etichetaCheie();
+    randeazaParitatea();
     actualizeazaInsigna();
   }
 
@@ -1725,6 +1820,21 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       return false;
     }
   }
+  /** Setarea de paritate apare doar dacă orarul chiar are ore alternative. */
+  function randeazaParitatea() {
+    const camp = $('#saptSet'), sel = $('#orarParitate');
+    if (!camp || !sel) return;
+    camp.hidden = !areSaptamaniAlternative();
+    if (camp.hidden) return;
+    const p = orar().paritate;
+    sel.value = (p && p.tip) ? p.tip : '';
+    const acum = saptamanaCurenta();
+    camp.title = acum
+      ? 'Săptămâna în curs e ' + (acum === 'para' ? 'pară' : 'impară') +
+        '. Se calculează singură de acum înainte.'
+      : 'Cât timp nu știu paritatea, arăt toate orele.';
+  }
+
   /** Butonul din subsolul orarului spune și cu ce serviciu se scanează. */
   function etichetaCheie() {
     const el = $('#orarKeyLabel');
@@ -2274,7 +2384,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       localStorage.setItem(CHEIE_ANUNT, azi);
     } catch (e) { return; }                          // mod privat: renunțăm în tăcere
 
-    const lista = oreZi(ziAzi());
+    const lista = oreZiActive(ziAzi());
     setTimeout(() => {
       const vezi = { label: 'Vezi orarul', fn: deschideOrar };
       if (!lista.length) {
@@ -2311,6 +2421,22 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     $('#orarDlg').addEventListener('close', () => { clearInterval(orarTimer); orarTimer = null; });
     $('#orarAddBtn').addEventListener('click', () => deschideOra(null));
     $('#orarKeyBtn').addEventListener('click', deschideCheia);
+
+    $('#orarParitate').addEventListener('change', e => {
+      const tip = e.target.value;
+      if (tip) orar().paritate = { deLa: luniDin(new Date()), tip: tip };
+      else delete orar().paritate;
+      salveazaOrarul();
+      toast(tip ? 'Am reținut: săptămâna asta e ' + (tip === 'para' ? 'pară' : 'impară')
+                : 'Arăt din nou toate orele', 'ok');
+    });
+
+    $('#aziCard').addEventListener('click', e => {
+      const b = e.target.closest('.azi__nota');
+      if (!b) return;
+      const o = orar().entries.filter(x => x.id === b.dataset.ora)[0];
+      if (o) notitaDinOra(o);
+    });
 
     $('#ziTabs').addEventListener('click', e => {
       const b = e.target.closest('.zi-tab');
