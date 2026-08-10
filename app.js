@@ -56,7 +56,7 @@
     const t = now();
     return {
       version: 1,
-      settings: { theme: 'light' },
+      settings: { theme: 'dark' },
       subjects: [
         { id: s1, name: 'Analiză Matematică', color: '#2563EB', prof: 'Prof. Popescu' },
         { id: s2, name: 'Programare Orientată pe Obiecte', color: '#059669', prof: 'Conf. Ionescu' },
@@ -162,7 +162,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   function normalize(parsed) {
     if (!parsed || !Array.isArray(parsed.notes)) return null;
     parsed.subjects = parsed.subjects || [];
-    parsed.settings = parsed.settings || { theme: 'light' };
+    parsed.settings = parsed.settings || { theme: 'dark' };
     return parsed;
   }
 
@@ -217,6 +217,25 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   const fmtTime = new Intl.DateTimeFormat('ro-RO', { hour: '2-digit', minute: '2-digit' });
   const fmtDay = new Intl.DateTimeFormat('ro-RO', { day: 'numeric', month: 'short' });
   const fmtFull = new Intl.DateTimeFormat('ro-RO', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const fmtZi = new Intl.DateTimeFormat('ro-RO', { weekday: 'long', day: 'numeric', month: 'long' });
+  const fmtCeas = new Intl.DateTimeFormat('ro-RO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  const cuMajuscula = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+  /* ceasul din bara de jos a editorului — ziua și ora, în timp real */
+  let ceasTimer = null;
+  function porneșteCeasul() {
+    const el = $('#clockText');
+    if (!el) return;
+    const bate = () => {
+      const d = new Date();
+      el.textContent = cuMajuscula(fmtZi.format(d)) + ' · ' + fmtCeas.format(d);
+    };
+    bate();
+    clearInterval(ceasTimer);
+    ceasTimer = setInterval(bate, 1000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) bate(); });
+  }
 
   function relTime(ts) {
     const d = now() - ts;
@@ -546,6 +565,147 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     return safe.replace(rx, '<mark>$1</mark>');
   }
 
+  /* ==========================================================
+     GESTURI PE NOTIȚE
+     Trage spre dreapta = șterge. Ține apăsat = favorită.
+     Merg la fel cu degetul și cu mouse-ul (pointer events).
+     ========================================================== */
+  const APASARE_LUNGA = 480;     // ms
+  const PRAG_MINIM = 12;         // px, până aici nu decidem dacă e derulare sau tragere
+  const REDUS = window.matchMedia &&
+                window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function pragStergere(card) {
+    return Math.min(130, Math.max(70, card.offsetWidth * 0.38));
+  }
+
+  function pictFavorita(card, note) {
+    const flags = $('.note-card__flags', card);
+    if (!flags) return;
+    flags.innerHTML =
+      (note.pinned ? '<svg class="ic note-card__flag note-card__flag--pin"><use href="#i-pin"></use></svg>' : '') +
+      (note.favorite ? '<svg class="ic note-card__flag note-card__flag--fav"><use href="#i-star"></use></svg>' : '');
+  }
+
+  function comutaFavorita(note, card) {
+    note.favorite = !note.favorite;
+    touch(note);
+    if (ui.activeId === note.id) $('#favBtn').setAttribute('aria-pressed', String(note.favorite));
+    if (card) {
+      pictFavorita(card, note);
+      card.classList.remove('is-fav-pop');
+      void card.offsetWidth;                     // repornim animația
+      card.classList.add('is-fav-pop');
+    }
+    if (navigator.vibrate) { try { navigator.vibrate(12); } catch (e) { /* iOS nu are */ } }
+    toast(note.favorite ? 'Adăugată la favorite' : 'Scoasă de la favorite', 'ok');
+  }
+
+  function stergeCuAnimatie(note, row) {
+    if (row.classList.contains('is-deleting')) return;
+    row.style.setProperty('--h', row.offsetHeight + 'px');
+    row.classList.add('is-deleting');
+    setTimeout(() => deleteNote(note), REDUS ? 0 : 300);
+  }
+
+  function attachGestures(card, row, note) {
+    let x0 = 0, y0 = 0, dx = 0;
+    let apasat = false, esteTragere = false, blocat = false;
+    let cronometru = null, redesenare = false, idPointer = null;
+
+    const opreste = () => { if (cronometru) { clearTimeout(cronometru); cronometru = null; } };
+    const revino = () => {
+      card.style.transition = '';
+      card.style.transform = '';
+      row.classList.remove('is-swiping', 'is-armed');
+    };
+
+    card.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (e.target.closest('[data-act]')) return;
+      idPointer = e.pointerId;
+      x0 = e.clientX; y0 = e.clientY; dx = 0;
+      apasat = true; esteTragere = false; blocat = false;
+      card.style.transition = 'none';
+      opreste();
+      cronometru = setTimeout(() => {
+        cronometru = null;
+        if (esteTragere || !apasat) return;
+        apasat = false; blocat = true; redesenare = true;
+        revino();
+        comutaFavorita(note, card);
+      }, APASARE_LUNGA);
+    });
+
+    card.addEventListener('pointermove', e => {
+      if (!apasat || e.pointerId !== idPointer) return;
+      const ddx = e.clientX - x0, ddy = e.clientY - y0;
+
+      if (!esteTragere) {
+        if (Math.abs(ddx) < PRAG_MINIM && Math.abs(ddy) < PRAG_MINIM) return;
+        if (Math.abs(ddy) >= Math.abs(ddx)) {      // derulează vertical: nu ne băgăm
+          apasat = false; opreste(); revino(); return;
+        }
+        esteTragere = true; opreste();
+        row.classList.add('is-swiping');
+        try { card.setPointerCapture(idPointer); } catch (err) { /* ignorăm */ }
+      }
+
+      dx = Math.max(0, ddx);                        // doar spre dreapta
+      const prag = pragStergere(card);
+      const tras = dx > prag ? prag + (dx - prag) * 0.3 : dx;   // rezistență după prag
+      card.style.transform = 'translateX(' + tras + 'px)';
+      row.classList.toggle('is-armed', dx >= prag);
+    });
+
+    const incheie = e => {
+      if (e && e.pointerId !== idPointer) return;
+      opreste();
+      if (!apasat && !esteTragere) return;
+      const eraTragere = esteTragere;
+      const distanta = dx;
+      apasat = false; esteTragere = false;
+      card.style.transition = '';
+
+      if (eraTragere && distanta >= pragStergere(card)) {
+        blocat = true;
+        stergeCuAnimatie(note, row);
+        return;
+      }
+      if (eraTragere) blocat = true;                // a tras, dar prea puțin: nu deschidem
+      revino();
+      if (redesenare) {
+        redesenare = false;
+        // amânăm: altfel click-ul care urmează ar cădea pe cardul nou
+        setTimeout(() => { renderList(); renderSidebar(); }, 0);
+      }
+    };
+    card.addEventListener('pointerup', incheie);
+    card.addEventListener('pointercancel', incheie);
+
+    card.addEventListener('click', e => {
+      if (e.target.closest('[data-act]')) return;
+      if (blocat) { e.preventDefault(); e.stopPropagation(); blocat = false; return; }
+      openNote(note.id);
+    });
+
+    card.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openNote(note.id); }
+      else if (e.key === 'Delete') { e.preventDefault(); stergeCuAnimatie(note, row); }
+    });
+
+    // pe ecrane tactile, apăsarea lungă ar chema meniul sistemului
+    card.addEventListener('contextmenu', e => {
+      if (window.matchMedia('(hover: none)').matches) e.preventDefault();
+    });
+
+    $$('[data-act]', card).forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation();
+      if (b.dataset.act === 'del') stergeCuAnimatie(note, row);
+      else { comutaFavorita(note, card); setTimeout(() => { renderList(); renderSidebar(); }, 0); }
+    }));
+  }
+
   function renderList() {
     const titles = { all: 'Toate notițele', fav: 'Favorite', archive: 'Arhivă' };
     let title = titles[ui.filter.type] || 'Notițe';
@@ -589,9 +749,21 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       }
 
       const s = subjectOf(n);
-      const card = document.createElement('button');
+
+      // rândul ține fundalul roșu de ștergere, peste care alunecă notița
+      const row = document.createElement('div');
+      row.className = 'note-row';
+      row.setAttribute('role', 'listitem');
+      row.innerHTML =
+        '<div class="note-row__bg" aria-hidden="true">' +
+        '<svg class="ic"><use href="#i-trash"></use></svg><span>Șterge</span></div>';
+
+      const card = document.createElement('div');
       card.className = 'note-card' + (n.id === ui.activeId ? ' is-active' : '');
-      card.setAttribute('role', 'listitem');
+      card.setAttribute('role', 'button');
+      card.tabIndex = 0;
+      card.setAttribute('aria-label',
+        (n.title || 'Fără titlu') + (s ? ' — ' + s.name : '') + (n.favorite ? ' — favorită' : ''));
       card.style.animationDelay = Math.min(i * 22, 260) + 'ms';
 
       const flags =
@@ -600,7 +772,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
 
       card.innerHTML =
         '<div class="note-card__top"><span class="note-card__title">' +
-          highlight(n.title || 'Fără titlu', q) + '</span>' + flags + '</div>' +
+          highlight(n.title || 'Fără titlu', q) + '</span>' +
+          '<span class="note-card__flags">' + flags + '</span></div>' +
         '<div class="note-card__excerpt">' + highlight(plainExcerpt(n.content) || 'Notiță goală', q) + '</div>' +
         '<div class="note-card__meta">' +
           (s ? '<span class="note-card__subject"><span class="dot" style="background:' + s.color + '"></span>' +
@@ -608,10 +781,17 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
           '<span>' + relTime(n.updatedAt) + '</span>' +
           ((n.tags || []).length ? '<span class="sep">·</span><span>#' + escapeHtml(n.tags[0]) +
             (n.tags.length > 1 ? ' +' + (n.tags.length - 1) : '') + '</span>' : '') +
+        '</div>' +
+        '<div class="note-card__act">' +
+          '<button class="mini" data-act="fav" title="Favorită (sau ține apăsat pe notiță)" ' +
+            'aria-label="Adaugă la favorite"><svg class="ic"><use href="#i-star"></use></svg></button>' +
+          '<button class="mini mini--danger" data-act="del" title="Șterge (sau trage notița spre dreapta)" ' +
+            'aria-label="Șterge notița"><svg class="ic"><use href="#i-trash"></use></svg></button>' +
         '</div>';
 
-      card.addEventListener('click', () => openNote(n.id));
-      wrap.appendChild(card);
+      row.appendChild(card);
+      attachGestures(card, row, n);
+      wrap.appendChild(row);
     });
   }
 
@@ -779,8 +959,10 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   function openNav() { $('#app').classList.add('nav-open'); $('#scrim').hidden = false; }
   function closeNav() { $('#app').classList.remove('nav-open'); $('#scrim').hidden = true; }
 
-  function applyTheme(theme) {
+  function applyTheme(theme, alesDeUtilizator) {
     db.settings.theme = theme;
+    // tema rămâne întunecată până când o schimbă chiar utilizatorul
+    if (alesDeUtilizator) db.settings.themeSetByUser = true;
     document.documentElement.dataset.theme = theme;
     const dark = theme === 'dark';
     $('#themeLabel').textContent = dark ? 'Mod luminos' : 'Mod întunecat';
@@ -865,6 +1047,14 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       case 'ul': linePrefix(l => '- ' + l.replace(/^\s*([-*+]|\d+[.)])\s*(\[[ xX]\]\s*)?/, '')); break;
       case 'todo': linePrefix(l => '- [ ] ' + l.replace(/^[-*+]\s*(\[[ xX]\]\s*)?/, '')); break;
       case 'quote': linePrefix(l => '> ' + l.replace(/^>\s*/, '')); break;
+      case 'datetime': {
+        const acum = new Date();
+        const text = cuMajuscula(fmtZi.format(acum)) + ', ora ' + fmtTime.format(acum);
+        ta.value = val.slice(0, start) + text + val.slice(end);
+        const dupa = start + text.length;
+        ta.setSelectionRange(dupa, dupa);
+        break;
+      }
     }
     ta.focus();
     note.content = ta.value;
@@ -1150,7 +1340,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
 
     // --- sidebar footer ---
     $('#themeBtn').addEventListener('click', () =>
-      applyTheme(db.settings.theme === 'dark' ? 'light' : 'dark'));
+      applyTheme(db.settings.theme === 'dark' ? 'light' : 'dark', true));
     $('#exportAllBtn').addEventListener('click', exportAll);
     $('#importBtn').addEventListener('click', async () => {
       if (api()) {                                    // dialog nativ de deschidere
@@ -1261,11 +1451,11 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
      PORNIRE
      ========================================================== */
   function init() {
-    const saved = db.settings.theme;
-    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    applyTheme(saved || (prefersDark ? 'dark' : 'light'));
+    // implicit e întunecat; alegerea utilizatorului are prioritate
+    applyTheme(db.settings.themeSetByUser ? (db.settings.theme || 'dark') : 'dark');
 
     bind();
+    porneșteCeasul();
     renderSidebar();
     renderList();
 

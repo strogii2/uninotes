@@ -4,7 +4,7 @@
    și să meargă fără internet după prima deschidere.
    ============================================================ */
 
-const CACHE = 'uninotes-v1';
+const CACHE = 'uninotes-v2';
 
 const SHELL = [
   './',

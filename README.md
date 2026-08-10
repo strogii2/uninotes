@@ -61,9 +61,18 @@ Dacă fișierul ajunge totuși corupt, aplicația îl pune deoparte ca `notite.j
 - **Căutare** în titlu, conținut, etichete și denumirea materiei, cu evidențierea potrivirilor.
 - **Editor Markdown** cu previzualizare: titluri, îngroșat/înclinat, liste, liste de bifat,
   citate, cod, tabele, linkuri. Listele se continuă automat la Enter.
+- **Ștergere prin tragere** — trage notița spre dreapta în listă: apare fundalul roșu,
+  notița alunecă afară și rândul se strânge. Ai **Anulează** în mesajul care apare, dacă
+  te-ai răzgândit.
+- **Favorite prin apăsare lungă** — ține degetul pe o notiță o jumătate de secundă.
+  Pe calculator, ține apăsat butonul mouse-ului sau folosește butoanele care apar pe
+  notiță când treci cu mouse-ul peste ea.
+- **Ziua și ora, în timp real**, în bara de jos a editorului, cât scrii. Butonul cu ceas
+  din bara de formatare inserează data și ora în text, unde ai cursorul.
 - **Fixare** (notița stă sus) și **favorite**.
 - **Arhivă** pentru notițele terminate, ca să nu aglomereze lista.
-- **Mod întunecat**, pentru sesiunile de învățat de seara.
+- **Mod întunecat implicit**, pentru sesiunile de învățat de seara. Dacă îl schimbi pe
+  luminos din bara laterală, alegerea ta rămâne.
 - **Export**: o notiță ca `.md`, sau tot ce ai ca `.json`, prin fereastra obișnuită
   „Salvează ca". **Import** înapoi din `.json`.
 - **Printare / PDF** — notița se pregătește curat, fără interfață, și se deschide în
