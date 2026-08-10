@@ -833,6 +833,226 @@ body{-webkit-tap-highlight-color:transparent}
 
 @page{ margin:18mm 16mm }
 
+/* ============================================================
+   ORAR
+   Fereastră pe tot ecranul: pe telefon o zi pe rând (file),
+   pe desktop toată săptămâna deodată.
+   ============================================================ */
+.orar-dlg{
+  border:0;padding:0;margin:0;background:transparent;color:var(--fg);
+  width:100%;max-width:100%;height:100%;max-height:100%;
+}
+.orar-dlg::backdrop{background:rgba(15,23,42,.55);backdrop-filter:blur(3px)}
+.orar-dlg[open]{animation:orarIn var(--t-slow) var(--ease)}
+@keyframes orarIn{from{opacity:0;transform:translateY(14px)}}
+
+.orar{
+  display:flex;flex-direction:column;height:100%;
+  background:var(--bg);
+}
+.orar__top{
+  display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;
+  padding:var(--sp-3) var(--sp-4);
+  padding-top:calc(var(--sp-3) + env(safe-area-inset-top));
+  background:var(--surface);border-bottom:1px solid var(--border);
+}
+.orar__title{display:flex;align-items:center;gap:8px;font-size:17px;font-weight:800;letter-spacing:-.02em}
+.orar__title .ic{width:19px;height:19px;color:var(--primary)}
+.orar__body{
+  flex:1;overflow:auto;overscroll-behavior:contain;
+  padding:var(--sp-4);
+  padding-bottom:calc(var(--sp-6) + env(safe-area-inset-bottom));
+}
+.orar__foot{
+  display:flex;align-items:center;gap:var(--sp-2);
+  padding:var(--sp-2) var(--sp-4);
+  padding-bottom:calc(var(--sp-2) + env(safe-area-inset-bottom));
+  background:var(--surface);border-top:1px solid var(--border);
+}
+.ghost-btn--danger{color:var(--danger)}
+.ghost-btn--danger:hover{background:var(--danger-soft);color:var(--danger)}
+
+.btn--sm{padding:8px var(--sp-3);font-size:13px;min-height:38px}
+.btn--sm .ic{width:16px;height:16px}
+.no-mobile{display:none}
+
+/* ---- cardul „astăzi" ---- */
+.azi{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  box-shadow:var(--sh-1);padding:var(--sp-4);margin-bottom:var(--sp-4);
+}
+.azi__zi{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-muted)}
+.azi__titlu{font-size:16px;font-weight:700;margin-top:2px;letter-spacing:-.01em}
+.azi__lista{display:flex;flex-direction:column;gap:6px;margin-top:var(--sp-3)}
+.azi__rand{
+  display:flex;align-items:center;gap:var(--sp-3);
+  padding:8px 10px;border-radius:var(--r-md);background:var(--surface-2);
+  border:1px solid var(--border);font-size:14px;
+}
+.azi__rand.e-acum{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.azi__rand.e-urmeaza{border-color:var(--primary)}
+.azi__rand.e-trecut{opacity:.5}
+.azi__ora{font-variant-numeric:tabular-nums;font-weight:700;font-size:13px;color:var(--fg-soft);flex:none}
+.azi__nume{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.azi__eticheta{
+  flex:none;font-size:11px;font-weight:700;padding:2px 8px;border-radius:var(--r-full);
+  background:var(--primary);color:var(--on-primary);
+}
+.azi__rand.e-acum .azi__eticheta{background:var(--accent);color:#04301F}
+.azi__gol{font-size:14px;color:var(--fg-soft);margin-top:6px;line-height:1.6}
+.azi__gol .btn{margin-top:var(--sp-3)}
+
+/* ---- filele cu zilele ---- */
+.zi-tabs{
+  display:flex;gap:6px;margin-bottom:var(--sp-3);
+  overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;
+}
+.zi-tabs::-webkit-scrollbar{display:none}
+.zi-tab{
+  flex:1 0 auto;min-width:54px;min-height:44px;padding:6px 12px;
+  border-radius:var(--r-md);background:var(--surface);border:1px solid var(--border);
+  font-size:13px;font-weight:600;color:var(--fg-soft);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+  transition:background var(--t) var(--ease),color var(--t) var(--ease),border-color var(--t) var(--ease);
+}
+.zi-tab em{font-style:normal;font-size:10.5px;font-weight:700;color:var(--fg-muted)}
+.zi-tab[aria-selected="true"]{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
+.zi-tab[aria-selected="true"] em{color:inherit;opacity:.8}
+.zi-tab.e-azi:not([aria-selected="true"]){border-color:var(--primary);color:var(--primary)}
+
+/* ---- coloanele cu zile ---- */
+.orar-grid{display:block}
+.zi-col{display:none}
+.zi-col.e-selectat{display:block}
+.zi-col__cap{
+  display:none;align-items:baseline;gap:6px;
+  font-size:13px;font-weight:800;letter-spacing:-.01em;
+  padding:0 2px var(--sp-2);
+}
+.zi-col__cap em{font-style:normal;font-weight:600;font-size:11.5px;color:var(--fg-muted)}
+.zi-col__lista{display:flex;flex-direction:column;gap:var(--sp-2)}
+
+.ora-card{
+  display:flex;align-items:stretch;
+  background:var(--surface);border:1px solid var(--border);border-left-width:4px;
+  border-radius:var(--r-md);box-shadow:var(--sh-1);overflow:hidden;
+  transition:box-shadow var(--t) var(--ease),border-color var(--t) var(--ease);
+}
+.ora-card:hover{box-shadow:var(--sh-2);border-color:var(--border-strong)}
+.ora-card.e-acum{outline:2px solid var(--accent);outline-offset:1px}
+.ora-card__main{
+  flex:1;min-width:0;text-align:left;
+  display:flex;gap:var(--sp-3);align-items:stretch;
+  padding:10px var(--sp-3);min-height:52px;color:inherit;
+  transition:background var(--t) var(--ease),transform var(--t) var(--ease);
+}
+.ora-card__main:hover{background:var(--surface-2)}
+.ora-card__main:active{transform:scale(.985)}
+.ora-card__ceas{
+  flex:none;display:flex;flex-direction:column;justify-content:center;
+  font-variant-numeric:tabular-nums;font-size:13px;font-weight:700;color:var(--fg-soft);line-height:1.35;
+}
+.ora-card__ceas small{font-weight:500;font-size:12px;color:var(--fg-muted)}
+.ora-card__mij{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;justify-content:center}
+.ora-card__nume{font-size:14px;font-weight:700;line-height:1.35;overflow-wrap:anywhere}
+.ora-card__meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:11.5px;color:var(--fg-muted)}
+.tip-pill{
+  font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
+  padding:2px 7px;border-radius:var(--r-full);
+  background:var(--muted);color:var(--fg-soft);
+}
+.tip-pill.t-curs{background:color-mix(in srgb,var(--primary) 16%,transparent);color:var(--primary)}
+.tip-pill.t-seminar{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+.tip-pill.t-laborator{background:color-mix(in srgb,#7C3AED 18%,transparent);color:#7C3AED}
+[data-theme="dark"] .tip-pill.t-laborator{color:#C4B5FD}
+.tip-pill.t-proiect{background:color-mix(in srgb,#EA580C 18%,transparent);color:#EA580C}
+[data-theme="dark"] .tip-pill.t-proiect{color:#FDBA74}
+.ora-card__note{
+  flex:none;align-self:center;display:grid;place-items:center;
+  width:34px;height:34px;border-radius:var(--r-md);color:var(--fg-muted);
+  transition:background var(--t) var(--ease),color var(--t) var(--ease);
+}
+.ora-card__note:hover{background:var(--muted);color:var(--primary)}
+.ora-card__note .ic{width:16px;height:16px}
+
+.zi-goala{
+  font-size:13px;color:var(--fg-muted);text-align:center;
+  padding:var(--sp-5) var(--sp-3);border:1px dashed var(--border-strong);border-radius:var(--r-md);
+}
+
+/* ---- verificarea scanării ---- */
+.modal--wide{max-width:min(620px,calc(100vw - 24px))}
+.modal--slim{max-width:min(340px,calc(100vw - 32px))}
+.modal__text--mic{font-size:12.5px;color:var(--fg-muted)}
+.modal__actions--wrap{flex-wrap:wrap}
+.scan-list{
+  display:flex;flex-direction:column;gap:6px;
+  max-height:min(46vh,380px);overflow:auto;overscroll-behavior:contain;
+  padding-right:2px;
+}
+.scan-rand{
+  display:flex;align-items:center;gap:var(--sp-3);
+  padding:8px 10px;border:1px solid var(--border);border-radius:var(--r-md);
+  background:var(--surface-2);font-size:13px;
+}
+.scan-rand__zi{flex:none;width:34px;font-weight:800;font-size:11px;color:var(--fg-muted);text-transform:uppercase}
+.scan-rand__ora{flex:none;font-variant-numeric:tabular-nums;font-weight:700;font-size:12.5px;color:var(--fg-soft)}
+.scan-rand__nume{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scan-rand__x{flex:none;display:grid;place-items:center;width:32px;height:32px;border-radius:var(--r-sm);color:var(--fg-muted)}
+.scan-rand__x:hover{background:var(--danger-soft);color:var(--danger)}
+.scan-rand__x .ic{width:14px;height:14px;stroke-width:2.4}
+.scan-obs{
+  background:var(--muted);border-radius:var(--r-md);padding:10px var(--sp-3);
+  font-size:12.5px;line-height:1.55;
+}
+
+/* ---- așteptare ---- */
+.busy{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-2) 0}
+.busy .modal__text{margin:0}
+.spinner{
+  flex:none;width:26px;height:26px;border-radius:var(--r-full);
+  border:3px solid var(--border);border-top-color:var(--primary);
+  animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){
+  .spinner{animation-duration:2.4s}
+  .orar-dlg[open]{animation:none}
+}
+
+/* ---- câmpuri pe două coloane ---- */
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3)}
+.field select{
+  padding:10px var(--sp-3);min-height:42px;
+  background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);
+  font-family:var(--font-ui);font-size:14px;color:var(--fg);
+}
+.field select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 16%,transparent)}
+.field input[type="time"]{font-variant-numeric:tabular-nums}
+
+@media (max-width:860px){
+  /* Safari mărește pagina la focus dacă textul e sub 16px */
+  .field select,.field input[type="time"]{font-size:16px}
+  .orar__top .btn__text{display:none}
+  .orar__top .btn--sm{min-width:44px;min-height:44px;padding:8px 10px;justify-content:center}
+  .zi-tab{min-width:48px}
+}
+
+@media (min-width:861px){
+  .orar-dlg{max-width:100%}
+  .orar__top{padding:var(--sp-3) var(--sp-5)}
+  .orar__body{padding:var(--sp-5)}
+  .orar__foot{padding:var(--sp-2) var(--sp-5)}
+  .no-mobile{display:grid}
+  /* toată săptămâna deodată: filele nu mai sunt necesare */
+  .zi-tabs{display:none}
+  .orar-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:var(--sp-3);align-items:start}
+  .zi-col{display:block}
+  .zi-col__cap{display:flex}
+  .zi-col.e-azi .zi-col__cap{color:var(--primary)}
+  .azi{max-width:640px}
+}
+
 @media print{
   html,body{height:auto;overflow:visible;background:#fff}
   body > *:not(.print-area){display:none !important}

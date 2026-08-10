@@ -81,6 +81,26 @@ Dacă fișierul ajunge totuși corupt, aplicația îl pune deoparte ca `notite.j
   decide devreme că mișcarea e derulare și retrage pointerul.
 - **Ziua și ora, în timp real**, în bara de jos a editorului, cât scrii. Butonul cu ceas
   din bara de formatare inserează data și ora în text, unde ai cursorul.
+- **Orar**, din bara laterală. Ține orele săptămânii și îți spune ce urmează:
+  - cardul **Astăzi** arată orele zilei, cu ora curentă marcată „acum" și următoarea
+    „în N min"; butonul „Orar" din meniu arată ora următoare (sau „acum");
+  - pe calculator vezi toată săptămâna deodată, pe telefon o zi pe rând, cu file;
+  - o dată pe zi, la deschidere, primești un mesaj scurt cu ce ai în ziua respectivă;
+  - orele se pot adăuga și de mână (materie, zi, interval, tip, sala, profesor,
+    săptămână pară/impară);
+  - dacă ora e legată de o materie existentă, cardul preia culoarea materiei și are un
+    buton care te duce direct la notițele ei.
+- **Orarul citit dintr-o poză** — apeși „Scanează poza", alegi fotografia tabelului cu
+  orarul, iar Claude îl citește și îl transformă în ore. Înainte să se salveze ceva, vezi
+  lista a ce s-a înțeles și poți scoate rândurile greșite; apoi alegi „Adaugă la orar" sau
+  „Înlocuiește orarul". Materiile care nu există încă pot fi create cu un buton.
+
+  Pentru asta e nevoie de o cheie API de la
+  [console.anthropic.com](https://console.anthropic.com/settings/keys), pe care o pui o
+  singură dată din „Cheie pentru scanare". **Cheia rămâne doar pe dispozitivul tău**: stă
+  separat de notițe, deci nu intră în copiile de siguranță exportate. Poza e micșorată la
+  2200 px înainte de trimitere, ca să coste puțin. Fără cheie, orarul se completează manual;
+  restul aplicației funcționează la fel.
 - **Fixare** (notița stă sus) și **favorite**.
 - **Arhivă** pentru notițele terminate, ca să nu aglomereze lista.
 - **Mod întunecat implicit**, pentru sesiunile de învățat de seara. Dacă îl schimbi pe
@@ -130,6 +150,18 @@ Interfața rămâne un web app obișnuit — poți deschide `index.html` direct 
 vrei; atunci notițele se salvează în browser, nu în fișier.
 
 ## Cum funcționează pe dinăuntru
+
+Orarul stă în același fișier cu notițele, sub cheia `orar`. Fișierele făcute înainte ca
+orarul să existe nu au cheia asta — se adaugă goală la citire, deci copiile vechi se
+deschid normal.
+
+Scanarea pozei e singurul moment în care aplicația vorbește cu ceva din afară. Poza e
+micșorată în browser (canvas, maxim 2200 px pe latura lungă, JPEG) și trimisă la
+`api.anthropic.com` cu cheia ta, direct de pe dispozitiv — nu există server intermediar.
+Răspunsul e cerut ca JSON după o schemă fixă (`output_config.format`), așa că nu trebuie
+ghicit din text liber; orele care ies din schemă sau au intervale imposibile sunt aruncate
+înainte să ajungă pe ecran. Textul din poză e tratat ca date, nu ca instrucțiuni.
+Cheia se ține în `localStorage`, separat de notițe, ca să nu plece în backup-uri.
 
 La printare, WebView2 e o excepție: ignoră `window.print()` din JavaScript, așa că fereastra
 de Windows cheamă dialogul propriu al motorului (`ShowPrintUI`) prin puntea de Python. În

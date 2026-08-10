@@ -85,6 +85,10 @@ window.addEventListener('unhandledrejection', function (e) {
   <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
   <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
   <symbol id="i-restore" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.6"/><path d="M4 4v5h5"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M3 8.5A2 2 0 0 1 5 6.5h2.2l1.3-2h7l1.3 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="8" r="4.2"/><path d="m11 11 9 9M17 17l2-2M14 14l2-2"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16z"/></symbol>
 </svg>
 
 <!-- ============ APP ============ -->
@@ -125,6 +129,11 @@ window.addEventListener('unhandledrejection', function (e) {
         <svg class="ic"><use href="#i-archive"></use></svg>
         <span>Arhivă</span>
         <em class="count" id="cArch">0</em>
+      </button>
+      <button class="nav__item nav__item--orar" id="orarBtn">
+        <svg class="ic"><use href="#i-calendar"></use></svg>
+        <span>Orar</span>
+        <em class="count" id="cOrar">—</em>
       </button>
     </nav>
 
@@ -359,6 +368,135 @@ window.addEventListener('unhandledrejection', function (e) {
     <div class="modal__actions">
       <span class="spacer"></span>
       <button class="btn btn--primary" data-close>Am înțeles</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- ============ ORAR ============ -->
+<dialog class="orar-dlg" id="orarDlg" aria-label="Orarul săptămânii">
+  <div class="orar">
+    <header class="orar__top">
+      <button class="icon-btn only-mobile" id="orarClose2" aria-label="Închide orarul">
+        <svg class="ic"><use href="#i-back"></use></svg>
+      </button>
+      <h2 class="orar__title">
+        <svg class="ic"><use href="#i-calendar"></use></svg>
+        <span>Orar</span>
+      </h2>
+      <span class="spacer"></span>
+      <button class="btn btn--ghost btn--sm" id="orarScanBtn">
+        <svg class="ic"><use href="#i-camera"></use></svg>
+        <span class="btn__text">Scanează poza</span>
+      </button>
+      <button class="btn btn--primary btn--sm" id="orarAddBtn">
+        <svg class="ic"><use href="#i-plus"></use></svg>
+        <span class="btn__text">Adaugă oră</span>
+      </button>
+      <button class="icon-btn no-mobile" id="orarClose" aria-label="Închide orarul">
+        <svg class="ic"><use href="#i-x"></use></svg>
+      </button>
+    </header>
+
+    <div class="orar__body">
+      <section class="azi" id="aziCard" aria-live="polite"></section>
+      <div class="zi-tabs" id="ziTabs" role="tablist" aria-label="Ziua din orar"></div>
+      <div class="orar-grid" id="orarGrid"></div>
+    </div>
+
+    <footer class="orar__foot">
+      <button class="ghost-btn" id="orarKeyBtn">
+        <svg class="ic"><use href="#i-key"></use></svg>
+        <span id="orarKeyLabel">Cheie pentru scanare</span>
+      </button>
+      <span class="spacer"></span>
+      <button class="ghost-btn ghost-btn--danger" id="orarClearBtn">
+        <svg class="ic"><use href="#i-trash"></use></svg>
+        <span>Golește orarul</span>
+      </button>
+    </footer>
+  </div>
+</dialog>
+
+<input type="file" id="orarFoto" accept="image/*" hidden>
+
+<dialog class="modal" id="oraModal">
+  <form method="dialog" class="modal__body" id="oraForm">
+    <h2 class="modal__title" id="oraModalTitle">Oră nouă</h2>
+    <label class="field">
+      <span>Materie</span>
+      <input id="oraMaterie" required maxlength="80" placeholder="ex. Analiză Matematică"
+             list="materiiSugestii" autocomplete="off">
+      <datalist id="materiiSugestii"></datalist>
+    </label>
+    <div class="field-row">
+      <label class="field"><span>Ziua</span><select id="oraZi"></select></label>
+      <label class="field"><span>Tip</span><select id="oraTip"></select></label>
+    </div>
+    <div class="field-row">
+      <label class="field"><span>De la</span><input id="oraStart" type="time" required></label>
+      <label class="field"><span>Până la</span><input id="oraEnd" type="time" required></label>
+    </div>
+    <div class="field-row">
+      <label class="field"><span>Sala <em>(opțional)</em></span><input id="oraSala" maxlength="40" placeholder="ex. A203"></label>
+      <label class="field"><span>Săptămâna</span><select id="oraSapt"></select></label>
+    </div>
+    <label class="field">
+      <span>Profesor <em>(opțional)</em></span>
+      <input id="oraProf" maxlength="60" placeholder="ex. Prof. Ionescu">
+    </label>
+    <div class="modal__actions">
+      <button type="button" class="btn btn--danger-ghost" id="oraDelete" hidden>Șterge</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn btn--ghost" data-close>Renunță</button>
+      <button type="submit" class="btn btn--primary">Salvează</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="modal modal--wide" id="scanModal">
+  <div class="modal__body">
+    <h2 class="modal__title">Ce am citit din poză</h2>
+    <p class="modal__text" id="scanRezumat"></p>
+    <div class="scan-list" id="scanList"></div>
+    <p class="modal__text scan-obs" id="scanObs" hidden></p>
+    <div class="modal__actions modal__actions--wrap">
+      <button class="btn btn--ghost" data-close>Renunță</button>
+      <span class="spacer"></span>
+      <button class="btn btn--ghost" id="scanAdauga">Adaugă la orar</button>
+      <button class="btn btn--primary" id="scanInlocuieste">Înlocuiește orarul</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="modal" id="cheieModal">
+  <form method="dialog" class="modal__body" id="cheieForm">
+    <h2 class="modal__title">Cheie pentru recunoașterea automată</h2>
+    <p class="modal__text">Poza cu orarul e citită de Claude. Îți trebuie o cheie API de la
+      <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.
+      Cheia rămâne doar pe dispozitivul acesta: nu intră în copiile de siguranță și nu ajunge nicăieri altundeva.</p>
+    <label class="field">
+      <span>Cheia API</span>
+      <input id="cheieInput" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
+    </label>
+    <p class="modal__text modal__text--mic">O scanare costă câțiva cenți. Orele se pot adăuga oricând și de mână, fără cheie.</p>
+    <div class="modal__actions">
+      <button type="button" class="btn btn--danger-ghost" id="cheieSterge" hidden>Șterge cheia</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn btn--ghost" data-close>Renunță</button>
+      <button type="submit" class="btn btn--primary">Salvează</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="modal modal--slim" id="scanBusy">
+  <div class="modal__body">
+    <div class="busy">
+      <span class="spinner" aria-hidden="true"></span>
+      <p class="modal__text" id="scanBusyText">Citesc orarul din poză…</p>
+    </div>
+    <div class="modal__actions">
+      <span class="spacer"></span>
+      <button class="btn btn--ghost" id="scanRenunta">Renunță</button>
     </div>
   </div>
 </dialog>
