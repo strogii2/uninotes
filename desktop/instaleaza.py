@@ -12,8 +12,8 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
-import zipfile
 from pathlib import Path
 
 RADACINA = Path(__file__).resolve().parent.parent
@@ -29,17 +29,27 @@ def opreste_aplicatia():
     time.sleep(1.2)
 
 
-def versiunea_din(exe: Path):
-    """Citim app.js direct din arhiva lipită la coada executabilului."""
-    try:
-        with zipfile.ZipFile(exe) as z:
-            for nume in z.namelist():
-                if nume.endswith("app.js"):
-                    text = z.read(nume).decode("utf-8", "replace")
-                    m = re.search(r"VERSIUNE = (\d+)", text)
-                    return m.group(1) if m else "?"
-    except Exception:                                            # noqa: BLE001
-        pass
+def porneste_si_citeste_versiunea(exe: Path):
+    """
+    Singurul martor de încredere e aplicația pornită. Arhiva lipită la coada
+    executabilului nu e un zip și e comprimată, deci nu se poate citi de pe disc;
+    în schimb, la pornire își desface fișierele într-un folder temporar.
+    Lăsăm aplicația deschisă la final — oricum asta vrei după instalare.
+    """
+    temp = Path(tempfile.gettempdir())
+    inainte = set(temp.glob("_MEI*"))
+    subprocess.Popen([str(exe)])
+    for _ in range(60):
+        time.sleep(0.5)
+        for d in temp.glob("_MEI*"):
+            if d in inainte:
+                continue
+            f = d / "web" / "app.js"
+            if f.exists():
+                m = re.search(r"VERSIUNE = (\d+)",
+                              f.read_text(encoding="utf-8", errors="replace"))
+                if m:
+                    return m.group(1)
     return None
 
 
@@ -67,10 +77,14 @@ def main():
         shutil.copy2(INSTALAT, SPEC.parent / "UniNotes-precedent.exe")
     shutil.copy2(DIST, INSTALAT)
 
-    v = versiunea_din(INSTALAT)
     print("Instalat: " + str(INSTALAT))
-    print("Versiunea din executabilul instalat: " + (v or "(necitită)"))
     print("Copie a versiunii precedente: " + str(SPEC.parent / "UniNotes-precedent.exe"))
+
+    v = porneste_si_citeste_versiunea(INSTALAT)
+    if not v:
+        print("ATENȚIE: aplicația s-a instalat, dar nu am putut confirma versiunea.")
+        return 1
+    print("Versiunea care chiar rulează acum: " + v)
     return 0
 
 
