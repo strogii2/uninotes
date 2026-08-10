@@ -13,6 +13,12 @@ import main as app
 rezultate = {}
 tmp = Path(tempfile.mkdtemp(prefix="uninotes-test-"))
 
+# Testul strică fișierul de notițe intenționat, ca să verifice recuperarea.
+# Îl mutăm mai întâi într-un folder al lui, ca notițele reale să rămână întregi.
+app.DATA_DIR = tmp / "date"
+app.DATA_FILE = app.DATA_DIR / "notite.json"
+app.DATA_DIR.mkdir(parents=True, exist_ok=True)
+
 
 class FereastraFalsa:
     """Ține locul ferestrei reale: întoarce o cale în loc să deschidă dialogul."""

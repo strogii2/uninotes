@@ -4,7 +4,9 @@ din interior și confirmă că notițele ajung în fișierul de pe disc. Apoi î
 """
 
 import json
+import tempfile
 import time
+from pathlib import Path
 
 import webview
 
@@ -93,8 +95,10 @@ def probe(window):
 
 
 def run():
-    if app.DATA_FILE.exists():
-        app.DATA_FILE.unlink()                                # pornim de la zero
+    # Verificarea pornește de la zero, deci într-un folder al ei:
+    # notițele reale ale utilizatorului nu au ce căuta aici.
+    app.DATA_DIR = Path(tempfile.mkdtemp(prefix="uninotes-test-"))
+    app.DATA_FILE = app.DATA_DIR / "notite.json"              # pornim de la zero
 
     api = app.Api()
     window = webview.create_window(

@@ -1044,6 +1044,13 @@ body{-webkit-tap-highlight-color:transparent}
   flex:1;background:#fff;border:1px solid var(--border);border-radius:var(--r-md);
   box-shadow:var(--sh-1);cursor:crosshair;
   touch-action:none;                    /* altfel telefonul derulează în loc să deseneze */
+  /* Mărimea pânzei trebuie să vină numai din spațiul rămas liber. Fără liniile
+     de mai jos, un element flexibil refuză să coboare sub mărimea lui proprie,
+     iar mărimea proprie a unei pânze e chiar numărul ei de pixeli. Pe ecranele
+     dense (telefon) pixelii sunt de două-trei ori mai mulți decât locul de pe
+     ecran, așa că pânza s-ar umfla singură la fiecare măsurătoare până ar ieși
+     din ecran, ducând cu ea și butoanele de salvare. */
+  min-width:0;min-height:0;
 }
 .desen-sfat{
   position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;
