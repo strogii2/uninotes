@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 10;            // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 11;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -600,8 +600,10 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     if (!c || c.dataset.legat) return;
     c.dataset.legat = '1';
 
-    // prinde și deschiderea dialogului, și rotirea telefonului
-    if (window.ResizeObserver) new ResizeObserver(potrivestePanza).observe(c);
+    // Prinde și deschiderea dialogului, și rotirea telefonului. Urmărim locul în
+    // care stă pânza, nu pânza: altfel schimbarea ei de mărime ar porni o nouă
+    // măsurătoare, care ar schimba-o iar — la nesfârșit.
+    if (window.ResizeObserver) new ResizeObserver(potrivestePanza).observe(c.parentElement || c);
 
     const punct = e => {
       const r = c.getBoundingClientRect();
