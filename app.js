@@ -288,6 +288,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   function plainExcerpt(md, max) {
     return md
       .replace(/```[\s\S]*?```/g, ' ')
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')     // imaginile n-au ce căuta în rezumat
       .replace(/[#>*_`|~-]/g, ' ')
       .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
       .replace(/\s+/g, ' ')
@@ -318,6 +319,157 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   }
 
   /* ==========================================================
+     POZE ÎN NOTIȚE
+     În browser stau în IndexedDB (localStorage e mult prea mic pentru imagini).
+     În aplicația desktop ajung fișiere lângă notite.json, ca să rămână valabilă
+     promisiunea că notițele sunt fișiere obișnuite, pe care le poți copia.
+     ========================================================== */
+  const NUME_BD = 'uninotes-poze';
+  const MAX_LATURA_POZA = 1600;
+  let bdPoze = null;
+
+  function deschideBD() {
+    if (bdPoze) return bdPoze;
+    bdPoze = new Promise((resolve, reject) => {
+      if (!window.indexedDB) { reject(new Error('IndexedDB indisponibil')); return; }
+      const c = indexedDB.open(NUME_BD, 1);
+      c.onupgradeneeded = () => {
+        if (!c.result.objectStoreNames.contains('poze')) c.result.createObjectStore('poze');
+      };
+      c.onsuccess = () => resolve(c.result);
+      c.onerror = () => reject(c.error || new Error('IndexedDB indisponibil'));
+    });
+    return bdPoze;
+  }
+
+  function bdOperatie(mod, fn) {
+    return deschideBD().then(bd => new Promise((resolve, reject) => {
+      const t = bd.transaction('poze', mod);
+      const c = fn(t.objectStore('poze'));
+      c.onsuccess = () => resolve(c.result);
+      c.onerror = () => reject(c.error);
+    }));
+  }
+
+  const poze = {
+    pune: function (id, dataUrl) {
+      if (api()) {
+        return Promise.resolve(api().save_image(id, dataUrl))
+          .then(r => !!(r && r.ok)).catch(() => false);
+      }
+      return bdOperatie('readwrite', s => s.put(dataUrl, id)).then(() => true).catch(() => false);
+    },
+    ia: function (id) {
+      if (api()) return Promise.resolve(api().load_image(id)).catch(() => null);
+      return bdOperatie('readonly', s => s.get(id)).catch(() => null);
+    },
+    sterge: function (id) {
+      if (api()) return Promise.resolve(api().delete_image(id)).catch(() => null);
+      return bdOperatie('readwrite', s => s.delete(id)).catch(() => null);
+    },
+    toate: function () {
+      if (api()) return Promise.resolve(api().list_images()).then(l => l || []).catch(() => []);
+      return bdOperatie('readonly', s => s.getAllKeys()).then(l => l || []).catch(() => []);
+    }
+  };
+
+  /** Toate pozele la care se face trimitere din notițe. */
+  function pozeFolosite(note) {
+    const ids = [];
+    (note || db.notes).forEach(n => {
+      const re = /!\[[^\]]*\]\(uninotes:([A-Za-z0-9_-]+)\)/g;
+      let m;
+      while ((m = re.exec(n.content || ''))) if (ids.indexOf(m[1]) < 0) ids.push(m[1]);
+    });
+    return ids;
+  }
+
+  /**
+   * Pozele la care nu mai trimite nicio notiță ocupă loc degeaba.
+   * Curățăm la pornire, nu la ștergerea notiței: altfel „Anulează” ar readuce
+   * notița, dar fără poze.
+   */
+  async function curataPozeOrfane() {
+    try {
+      const stocate = await poze.toate();
+      if (!stocate.length) return;
+      const folosite = pozeFolosite();
+      const orfane = stocate.filter(id => folosite.indexOf(String(id)) < 0);
+      for (const id of orfane) await poze.sterge(id);
+      if (orfane.length) console.info('[UniNotes] ' + orfane.length + ' poze fără stăpân, șterse');
+    } catch (e) { /* fără poze sau depozit indisponibil */ }
+  }
+
+  function comprimaPoza(file) {
+    return new Promise((resolve, reject) => {
+      if (!/^image\//.test(file.type || '')) { reject(new Error('Fișierul nu e o imagine.')); return; }
+      const fr = new FileReader();
+      fr.onerror = () => reject(new Error('Nu am putut citi fișierul.'));
+      fr.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('Fișierul nu pare a fi o imagine.'));
+        img.onload = () => {
+          try {
+            const f = Math.min(1, MAX_LATURA_POZA / Math.max(img.width, img.height));
+            const w = Math.max(1, Math.round(img.width * f));
+            const h = Math.max(1, Math.round(img.height * f));
+            const c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            const g = c.getContext('2d');
+            g.fillStyle = '#fff';                 // pozele cu transparență ar ieși negre
+            g.fillRect(0, 0, w, h);
+            g.drawImage(img, 0, 0, w, h);
+            resolve(c.toDataURL('image/jpeg', 0.82));
+          } catch (e) { reject(new Error('Nu am putut pregăti poza.')); }
+        };
+        img.src = fr.result;
+      };
+      fr.readAsDataURL(file);
+    });
+  }
+
+  async function insereazaPoza(file) {
+    const nota = activeNote();
+    if (!nota) return;
+    let url;
+    try { url = await comprimaPoza(file); }
+    catch (e) { toast(e.message || 'Nu am putut citi poza.', 'err'); return; }
+
+    const id = 'p' + uid();
+    if (!await poze.pune(id, url)) { toast('Nu am putut salva poza.', 'err'); return; }
+
+    const ta = $('#contentInput');
+    const marca = '![poză](uninotes:' + id + ')';
+    const start = ta.selectionStart, sfarsit = ta.selectionEnd;
+    const inainte = ta.value.slice(0, start);
+    const nevoieDeRand = inainte && !/\n\n$/.test(inainte) ? (/\n$/.test(inainte) ? '\n' : '\n\n') : '';
+    const text = nevoieDeRand + marca + '\n';
+    ta.setRangeText(text, start, sfarsit, 'end');
+    nota.content = ta.value;
+    touch(nota);
+    if (ui.preview) renderEditor();
+    toast('Poză adăugată', 'ok');
+  }
+
+  /** Sursele se completează după randare: citirea din depozit e asincronă. */
+  const urlPoze = new Map();
+  function rezolvaPozele(radacina) {
+    return Promise.all($$('img[data-poza]', radacina).map(img => {
+      const id = img.dataset.poza;
+      if (urlPoze.has(id)) { img.src = urlPoze.get(id); return null; }
+      return Promise.resolve(poze.ia(id)).then(url => {
+        if (url) { urlPoze.set(id, url); img.src = url; }
+        else {
+          const lipsa = document.createElement('span');
+          lipsa.className = 'md-poza-lipsa';
+          lipsa.textContent = 'Poza lipsește';
+          if (img.isConnected) img.replaceWith(lipsa);
+        }
+      });
+    }));
+  }
+
+  /* ==========================================================
      MARKDOWN
      ========================================================== */
   function inline(str) {
@@ -331,7 +483,23 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       links.push('<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + txt + '</a>');
       return '\uE000L' + (links.length - 1) + '\uE000';
     };
-    s = s.replace(/!\[([^\]]*)\]\([^)\s]+\)/g, '$1');                       // imagine → text alternativ
+    // Imaginile devin și ele marcaje: altfel regula de linkuri de mai jos ar prinde
+    // „](...)" din interiorul lor. Textul e deja trecut prin escapeHtml.
+    const imagini = [];
+    s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, url) => {
+      const descriere = alt || 'imagine';
+      let tag;
+      if (/^uninotes:[A-Za-z0-9_-]+$/.test(url)) {
+        // poza stă la noi; sursa se completează după randare, fiindcă citirea e asincronă
+        tag = '<img class="md-poza" data-poza="' + url.slice(9) + '" alt="' + descriere + '">';
+      } else if (/^https?:\/\//i.test(url) || /^data:image\//i.test(url)) {
+        tag = '<img class="md-poza" src="' + url + '" alt="' + descriere + '" loading="lazy">';
+      } else {
+        return descriere;                    // sursă necunoscută: rămâne textul alternativ
+      }
+      imagini.push(tag);
+      return '\uE000I' + (imagini.length - 1) + '\uE000';
+    });
     s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, txt, url) => link(url, txt));
     s = s.replace(/(^|[\s(])(https?:\/\/[^\s<]+[^\s<.,;:)])/g,
       (m, pre, url) => pre + link(url, url));
@@ -341,6 +509,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     s = s.replace(/(^|[^\w])_([^_\n]+)_/g, '$1<em>$2</em>');
     s = s.replace(/~~([^~]+)~~/g, '<s>$1</s>');
     s = s.replace(/==([^=]+)==/g, '<mark>$1</mark>');
+    s = s.replace(/\uE000I(\d+)\uE000/g, (m, i) => imagini[+i]);
     s = s.replace(/\uE000L(\d+)\uE000/g, (m, i) => links[+i]);
     return s.replace(/\uE000C(\d+)\uE000/g, (m, i) => '<code>' + codes[+i] + '</code>');
   }
@@ -1036,7 +1205,10 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     $('#contentInput').hidden = ui.preview;
     $('#toolbar').hidden = ui.preview;
     $('#previewPane').hidden = !ui.preview;
-    if (ui.preview && note) $('#previewPane').innerHTML = renderMarkdown(note.content);
+    if (ui.preview && note) {
+      $('#previewPane').innerHTML = renderMarkdown(note.content);
+      rezolvaPozele($('#previewPane'));
+    }
   }
 
   /* ==========================================================
@@ -1241,18 +1413,45 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   /* ==========================================================
      IMPORT / EXPORT
      ========================================================== */
-  function exportAll() {
+  /**
+   * Copia de siguranță ia și pozele, altfel restaurarea ar da notițe cu goluri.
+   * Sunt deja comprimate la inserare, deci fișierul rămâne rezonabil.
+   */
+  async function exportAll() {
+    const folosite = pozeFolosite();
+    const pack = Object.assign({}, db);
+    if (folosite.length) {
+      const strinse = {};
+      for (const id of folosite) {
+        const url = await poze.ia(id);
+        if (url) strinse[id] = url;
+      }
+      pack.poze = strinse;
+    }
+    const text = JSON.stringify(pack, null, 2);
+    const marime = text.length >= 1048576
+      ? (text.length / 1048576).toFixed(1) + ' MB'
+      : Math.max(1, Math.round(text.length / 1024)) + ' KB';
     saveAs('uninotes-backup-' + new Date().toISOString().slice(0, 10) + '.json',
-      JSON.stringify(db, null, 2), 'application/json', 'Backup salvat');
+      text, 'application/json',
+      'Backup salvat' + (folosite.length ? ' — cu ' + folosite.length +
+        (folosite.length === 1 ? ' poză' : ' poze') + ', ' + marime : ''));
   }
 
-  function exportNote(note) {
+  async function exportNote(note) {
     const s = subjectOf(note);
     const head = '# ' + (note.title || 'Fără titlu') + '\n\n' +
       (s ? '**Materie:** ' + s.name + (s.prof ? ' — ' + s.prof : '') + '  \n' : '') +
       ((note.tags || []).length ? '**Etichete:** ' + note.tags.map(t => '#' + t).join(', ') + '  \n' : '') +
       '**Modificat:** ' + fmtFull.format(new Date(note.updatedAt)) + '\n\n---\n\n';
-    saveAs(slug(note.title) + '.md', head + note.content, 'text/markdown;charset=utf-8', 'Notiță exportată');
+
+    // „uninotes:..." n-are sens în afara aplicației, deci punem poza chiar în fișier
+    let corp = note.content;
+    for (const id of pozeFolosite([note])) {
+      const url = await poze.ia(id);
+      if (url) corp = corp.split('uninotes:' + id).join(url);
+    }
+    saveAs(slug(note.title) + '.md', head + corp, 'text/markdown;charset=utf-8', 'Notiță exportată');
   }
 
   /* stil de sine stătător pentru pagina trimisă la imprimantă */
@@ -1292,7 +1491,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
    * (WebView2 deschide previzualizarea de printare începând cu versiunea 98;
    * pe acest calculator e 151).
    */
-  function printNote() {
+  async function printNote() {
     const note = activeNote();
     if (!note) return;
 
@@ -1303,9 +1502,13 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     bits.push('modificat ' + fmtFull.format(new Date(note.updatedAt)));
 
     const meta = '<p class="print-meta">' + escapeHtml(bits.join('  ·  ')) + '</p>';
-    const corp = meta + renderMarkdown(note.content);
     $('#printArea').innerHTML =
-      '<h1>' + escapeHtml(note.title || 'Fără titlu') + '</h1>' + corp;
+      '<h1>' + escapeHtml(note.title || 'Fără titlu') + '</h1>' + meta + renderMarkdown(note.content);
+
+    // pozele trebuie să aibă sursa completată înainte de printare, altfel ies goale
+    await rezolvaPozele($('#printArea'));
+    // corpul citit acum conține sursele rezolvate, deci merge și pe calea din Python
+    const corp = $('#printArea').innerHTML.replace(/^<h1>[\s\S]*?<\/h1>/, '');
 
     if (api()) {
       // Fereastra de Windows ignoră window.print(), dar WebView2 are dialogul lui,
@@ -1346,6 +1549,17 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         termene: Array.isArray(data.termene) ? data.termene : termene()
       };
       normalize(db);
+
+      // pozele stau separat de notițe, deci se pun înapoi în depozit, nu în db
+      if (data.poze && typeof data.poze === 'object') {
+        const ids = Object.keys(data.poze);
+        for (const id of ids) {
+          if (/^[A-Za-z0-9_-]+$/.test(id) && /^data:image\//.test(data.poze[id])) {
+            await poze.pune(id, data.poze[id]);
+          }
+        }
+        urlPoze.clear();
+      }
       ui.activeId = null;
       persist();
       applyTheme(db.settings.theme || 'light');
@@ -2898,7 +3112,18 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
 
     $('#toolbar').addEventListener('click', e => {
       const b = e.target.closest('.tool');
-      if (b) applyMd(b.dataset.md);
+      if (!b) return;
+      if (b.id === 'pozaBtn') {                 // butonul ăsta deschide un fișier, nu scrie Markdown
+        if (activeNote()) $('#pozaInput').click();
+        return;
+      }
+      applyMd(b.dataset.md);
+    });
+
+    $('#pozaInput').addEventListener('change', async e => {
+      const f = e.target.files[0];
+      e.target.value = '';                      // aceeași poză poate fi aleasă din nou
+      if (f) await insereazaPoza(f);
     });
 
     // meniul „mai multe”
@@ -3181,6 +3406,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     urmaresteTastatura();
     sfatGesturi();
     anuntaOrarul();
+    setTimeout(curataPozeOrfane, 4000);   // după ce pornirea s-a liniștit
   }
 
   document.addEventListener('DOMContentLoaded', boot);

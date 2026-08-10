@@ -6,6 +6,7 @@ folosind motorul Edge WebView2. Notițele NU mai stau în browser: se salvează 
 fișier JSON de pe disc, lângă aplicație.
 """
 
+import base64
 import http.server
 import json
 import os
@@ -115,6 +116,59 @@ class Api:
             return {"ok": True, "path": str(DATA_FILE)}
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
+
+    # ---------- poze din notițe ----------
+    # Stau ca fișiere lângă notite.json, nu într-o bază de date a browserului:
+    # așa rămâne adevărat că notițele se pot copia pe un stick cu tot cu poze.
+    def _images_dir(self) -> Path:
+        d = DATA_DIR / "imagini"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    @staticmethod
+    def _safe_id(image_id) -> str:
+        """Numele vine din interfață; nu lăsăm din el decât ce e sigur într-o cale."""
+        text = str(image_id or "")
+        curat = "".join(c for c in text if c.isalnum() or c in "-_")
+        return curat[:64]
+
+    def save_image(self, image_id, data_url):
+        try:
+            name = self._safe_id(image_id)
+            if not name:
+                return {"ok": False, "error": "nume invalid"}
+            head, _, payload = str(data_url).partition(",")
+            if "base64" not in head:
+                return {"ok": False, "error": "format neasteptat"}
+            (self._images_dir() / (name + ".jpg")).write_bytes(base64.b64decode(payload))
+            return {"ok": True}
+        except Exception as exc:                                  # noqa: BLE001
+            return {"ok": False, "error": str(exc)}
+
+    def load_image(self, image_id):
+        try:
+            name = self._safe_id(image_id)
+            path = self._images_dir() / (name + ".jpg")
+            if not name or not path.exists():
+                return None
+            return "data:image/jpeg;base64," + base64.b64encode(path.read_bytes()).decode("ascii")
+        except Exception:                                         # noqa: BLE001
+            return None
+
+    def delete_image(self, image_id):
+        try:
+            name = self._safe_id(image_id)
+            if name:
+                (self._images_dir() / (name + ".jpg")).unlink(missing_ok=True)
+            return True
+        except Exception:                                         # noqa: BLE001
+            return False
+
+    def list_images(self):
+        try:
+            return [p.stem for p in self._images_dir().glob("*.jpg")]
+        except Exception:                                         # noqa: BLE001
+            return []
 
     # ---------- fișiere ----------
     def save_file(self, suggested_name, content):
