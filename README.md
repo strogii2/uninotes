@@ -125,6 +125,11 @@ Dacă fișierul ajunge totuși corupt, aplicația îl pune deoparte ca `notite.j
   (tabla, un slide); pe telefon alegi între cameră și galerie. Pozele sunt micșorate la
   1600 px, intră în copiile de siguranță și apar și la printare. În browser stau în
   IndexedDB, iar în aplicația de Windows ca fișiere în `Notite UniNotes\imagini`.
+- **Desen în notițe** — butonul cu creion din bara de formatare deschide o pânză pe tot
+  ecranul: pix cu șase culori și patru grosimi, radieră, anulare linie cu linie și ștergere
+  totală. Merge cu degetul, cu mouse-ul sau cu creionul. Desenul se salvează ca imagine, deci
+  intră automat în previzualizare, printare, copiile de siguranță și sincronizare. Se salvează
+  ca PNG, nu JPEG: liniile subțiri ies curate și fișierul e mai mic pe desene.
 - **Repetiție pentru examen** — orice linie de forma `întrebare :: răspuns` din notițe devine
   o întrebare de repetat, la intervale care cresc (1, 3, 7, 16, 35, 75 de zile). O întrebare
   greșită revine peste zece minute și pleacă înapoi de la o zi. Spațiile din jurul lui `::`
@@ -199,6 +204,13 @@ deci restul codului nu știe unde sunt. În Markdown apar ca `![poză](uninotes:
 sursa se completează după randare, fiindcă citirea e asincronă; la printare o așteptăm
 explicit, altfel pozele ar ieși goale pe hârtie. La exportul unei notițe ca `.md` poza e
 inclusă în fișier, fiindcă `uninotes:...` n-are niciun înțeles în afara aplicației.
+
+Desenul ține liniile ca șiruri de puncte, nu ca pixeli: așa „anulează" e o simplă scoatere
+din listă, iar la rotirea telefonului desenul se redesenează curat în loc să se strice.
+Mărimea pânzei o dă CSS-ul, iar codul pune doar rezoluția — altfel observatorul de mărime
+s-ar declanșa singur la nesfârșit. Punctele intermediare dintre două evenimente de mișcare
+fac linia netedă pe ecranele rapide; când lista lor vine goală, ne bazăm pe evenimentul în
+sine, altfel s-ar pierde puncte.
 
 Repetiția își ține starea pe amprenta întrebării, nu pe poziția liniei în text: așa
 supraviețuiește editării și rearanjării notiței.

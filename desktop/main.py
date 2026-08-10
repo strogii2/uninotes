@@ -125,12 +125,22 @@ class Api:
         d.mkdir(parents=True, exist_ok=True)
         return d
 
+    # Fotografiile vin ca JPEG, desenele ca PNG (liniile ies curate, fișierul e mic).
+    FORMATE = {"image/jpeg": ".jpg", "image/png": ".png"}
+
     @staticmethod
     def _safe_id(image_id) -> str:
         """Numele vine din interfață; nu lăsăm din el decât ce e sigur într-o cale."""
         text = str(image_id or "")
         curat = "".join(c for c in text if c.isalnum() or c in "-_")
         return curat[:64]
+
+    def _find_image(self, name: str):
+        for ext in self.FORMATE.values():
+            path = self._images_dir() / (name + ext)
+            if path.exists():
+                return path
+        return None
 
     def save_image(self, image_id, data_url):
         try:
@@ -140,7 +150,14 @@ class Api:
             head, _, payload = str(data_url).partition(",")
             if "base64" not in head:
                 return {"ok": False, "error": "format neasteptat"}
-            (self._images_dir() / (name + ".jpg")).write_bytes(base64.b64decode(payload))
+            tip = head[5:head.find(";")] if head.startswith("data:") and ";" in head else "image/jpeg"
+            ext = self.FORMATE.get(tip)
+            if ext is None:
+                return {"ok": False, "error": "format de imagine neacceptat"}
+            vechi = self._find_image(name)          # la reînlocuire, nu lăsăm două fișiere
+            if vechi is not None and vechi.suffix != ext:
+                vechi.unlink(missing_ok=True)
+            (self._images_dir() / (name + ext)).write_bytes(base64.b64decode(payload))
             return {"ok": True}
         except Exception as exc:                                  # noqa: BLE001
             return {"ok": False, "error": str(exc)}
@@ -148,10 +165,13 @@ class Api:
     def load_image(self, image_id):
         try:
             name = self._safe_id(image_id)
-            path = self._images_dir() / (name + ".jpg")
-            if not name or not path.exists():
+            if not name:
                 return None
-            return "data:image/jpeg;base64," + base64.b64encode(path.read_bytes()).decode("ascii")
+            path = self._find_image(name)
+            if path is None:
+                return None
+            tip = "image/png" if path.suffix == ".png" else "image/jpeg"
+            return "data:" + tip + ";base64," + base64.b64encode(path.read_bytes()).decode("ascii")
         except Exception:                                         # noqa: BLE001
             return None
 
@@ -159,14 +179,18 @@ class Api:
         try:
             name = self._safe_id(image_id)
             if name:
-                (self._images_dir() / (name + ".jpg")).unlink(missing_ok=True)
+                for ext in self.FORMATE.values():
+                    (self._images_dir() / (name + ext)).unlink(missing_ok=True)
             return True
         except Exception:                                         # noqa: BLE001
             return False
 
     def list_images(self):
         try:
-            return [p.stem for p in self._images_dir().glob("*.jpg")]
+            nume = []
+            for ext in self.FORMATE.values():
+                nume += [p.stem for p in self._images_dir().glob("*" + ext)]
+            return sorted(set(nume))
         except Exception:                                         # noqa: BLE001
             return []
 

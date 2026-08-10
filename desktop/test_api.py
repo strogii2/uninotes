@@ -81,6 +81,22 @@ api.save_image("../../evadare", "data:image/jpeg;base64," + mic_png)
 rezultate["fara_evadare_din_folder"] = not (app.DATA_DIR.parent / "evadare.jpg").exists()
 rezultate["nume_curatat"] = "evadare" in api.list_images()
 
+# desenele vin ca PNG, nu ca JPEG
+mic_png_real = base64.b64encode(b"\x89PNG\r\n\x1a\n desen de test").decode("ascii")
+api.save_image("desen1", "data:image/png;base64," + mic_png_real)
+rezultate["desen_pastreaza_png"] = api.load_image("desen1").startswith("data:image/png;base64,")
+rezultate["desen_e_fisier_png"] = (app.DATA_DIR / "imagini" / "desen1.png").exists()
+rezultate["desen_in_lista"] = "desen1" in api.list_images()
+
+# reînlocuit cu alt format: nu trebuie să rămână două fișiere
+api.save_image("desen1", "data:image/jpeg;base64," + mic_png)
+rezultate["fara_dublura_la_schimbare"] = (
+    (app.DATA_DIR / "imagini" / "desen1.jpg").exists()
+    and not (app.DATA_DIR / "imagini" / "desen1.png").exists()
+)
+rezultate["format_neacceptat_refuzat"] = not api.save_image("x1", "data:image/gif;base64," + mic_png)["ok"]
+api.delete_image("desen1")
+
 rezultate["poza_stearsa"] = api.delete_image("abc123")
 rezultate["poza_chiar_stearsa"] = api.load_image("abc123") is None
 api.delete_image("evadare")
