@@ -95,12 +95,18 @@ Dacă fișierul ajunge totuși corupt, aplicația îl pune deoparte ca `notite.j
   lista a ce s-a înțeles și poți scoate rândurile greșite; apoi alegi „Adaugă la orar" sau
   „Înlocuiește orarul". Materiile care nu există încă pot fi create cu un buton.
 
-  Pentru asta e nevoie de o cheie API de la
-  [console.anthropic.com](https://console.anthropic.com/settings/keys), pe care o pui o
-  singură dată din „Cheie pentru scanare". **Cheia rămâne doar pe dispozitivul tău**: stă
-  separat de notițe, deci nu intră în copiile de siguranță exportate. Poza e micșorată la
-  2200 px înainte de trimitere, ca să coste puțin. Fără cheie, orarul se completează manual;
-  restul aplicației funcționează la fel.
+  Pentru asta e nevoie de o cheie, pusă o singură dată din „Cheie pentru scanare".
+  Sunt două variante — lipești cheia de la oricare, iar aplicația își dă seama singură
+  care e, după cum începe:
+
+  | Serviciu | Cost | Cheia începe cu | De reținut |
+  | --- | --- | --- | --- |
+  | [Google AI Studio](https://aistudio.google.com/apikey) | **gratuit**, fără card | `AIza…` | poza ajunge la Google, iar pe planul gratuit Google poate folosi datele ca să-și îmbunătățească serviciile |
+  | [Anthropic (Claude)](https://console.anthropic.com/settings/keys) | câțiva cenți pe scanare | `sk-ant-…` | cere card; pozele nu sunt folosite pentru antrenare |
+
+  **Cheia rămâne doar pe dispozitivul tău**: stă separat de notițe, deci nu intră în copiile
+  de siguranță exportate. Poza e micșorată la 2200 px înainte de trimitere. Fără cheie,
+  orarul se completează manual; restul aplicației funcționează la fel.
 - **Fixare** (notița stă sus) și **favorite**.
 - **Arhivă** pentru notițele terminate, ca să nu aglomereze lista.
 - **Mod întunecat implicit**, pentru sesiunile de învățat de seara. Dacă îl schimbi pe
@@ -156,12 +162,24 @@ orarul să existe nu au cheia asta — se adaugă goală la citire, deci copiile
 deschid normal.
 
 Scanarea pozei e singurul moment în care aplicația vorbește cu ceva din afară. Poza e
-micșorată în browser (canvas, maxim 2200 px pe latura lungă, JPEG) și trimisă la
-`api.anthropic.com` cu cheia ta, direct de pe dispozitiv — nu există server intermediar.
-Răspunsul e cerut ca JSON după o schemă fixă (`output_config.format`), așa că nu trebuie
-ghicit din text liber; orele care ies din schemă sau au intervale imposibile sunt aruncate
-înainte să ajungă pe ecran. Textul din poză e tratat ca date, nu ca instrucțiuni.
-Cheia se ține în `localStorage`, separat de notițe, ca să nu plece în backup-uri.
+micșorată în browser (canvas, maxim 2200 px pe latura lungă, JPEG) și trimisă cu cheia ta
+direct de pe dispozitiv — nu există server intermediar. Cei doi furnizori stau într-un
+tabel (`FURNIZORI` din `app.js`): fiecare își spune adresa, antetele, forma cererii și de
+unde se scoate răspunsul, deci restul codului nu știe cu cine vorbește.
+
+| | Google | Anthropic |
+| --- | --- | --- |
+| adresă | `generativelanguage.googleapis.com/v1beta/interactions` | `api.anthropic.com/v1/messages` |
+| autentificare | antetul `x-goog-api-key` | antetul `x-api-key` |
+| model | `gemini-3.6-flash` | `claude-opus-5` |
+| schema | `response_format.schema` | `output_config.format` |
+| răspuns | `output_text` | primul bloc `text` |
+
+Cheia merge în antet, niciodată în adresă, ca să nu ajungă în jurnale. Răspunsul e cerut ca
+JSON după aceeași schemă fixă la ambii, așa că nu trebuie ghicit din text liber; orele care
+ies din schemă sau au intervale imposibile sunt aruncate înainte să ajungă pe ecran. Textul
+din poză e tratat ca date, nu ca instrucțiuni. Cheia se ține în `localStorage`, separat de
+notițe, ca să nu plece în backup-uri.
 
 La printare, WebView2 e o excepție: ignoră `window.print()` din JavaScript, așa că fereastra
 de Windows cheamă dialogul propriu al motorului (`ShowPrintUI`) prin puntea de Python. În

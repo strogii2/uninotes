@@ -1584,7 +1584,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       grid.appendChild(col);
     });
 
-    $('#orarKeyLabel').textContent = cheieAI() ? 'Schimbă cheia de scanare' : 'Cheie pentru scanare';
+    etichetaCheie();
     actualizeazaInsigna();
   }
 
@@ -1652,7 +1652,65 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   }
 
   /* ---------- fotografia ---------- */
-  const CHEIE_AI = 'uninotes.cheie-claude';
+  const CHEIE_AI = 'uninotes.cheie-ai';
+
+  /**
+   * Merge cu oricare dintre cele două servicii care „văd" imagini; le deosebim
+   * după cum începe cheia, ca utilizatorul să nu aibă de ales dintr-o listă.
+   * Google e varianta gratuită, Anthropic cea plătită.
+   */
+  const FURNIZORI = {
+    google: {
+      nume: 'Google (gratuit)',
+      url: 'https://generativelanguage.googleapis.com/v1beta/interactions',
+      antete: cheie => ({ 'content-type': 'application/json', 'x-goog-api-key': cheie }),
+      corp: img => ({
+        model: 'gemini-3.6-flash',
+        input: [
+          { type: 'image', data: img.data, mime_type: img.media_type },
+          { type: 'text', text: PROMPT_ORAR }
+        ],
+        response_format: { type: 'text', mime_type: 'application/json', schema: SCHEMA_ORAR }
+      }),
+      // răspunsul vine gata ca text JSON, după schema cerută
+      extrage: r => r && r.output_text
+    },
+    anthropic: {
+      nume: 'Claude',
+      url: 'https://api.anthropic.com/v1/messages',
+      antete: cheie => ({
+        'content-type': 'application/json',
+        'x-api-key': cheie,
+        'anthropic-version': '2023-06-01',
+        // fără antetul ăsta, apelul direct din browser e respins
+        'anthropic-dangerous-direct-browser-access': 'true'
+      }),
+      corp: img => ({
+        model: 'claude-opus-5',
+        max_tokens: 16000,
+        output_config: { effort: 'medium', format: { type: 'json_schema', schema: SCHEMA_ORAR } },
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: img.media_type, data: img.data } },
+            { type: 'text', text: PROMPT_ORAR }
+          ]
+        }]
+      }),
+      extrage: r => {
+        if (r && r.stop_reason === 'refusal') return null;
+        const bloc = ((r && r.content) || []).filter(b => b.type === 'text')[0];
+        return bloc && bloc.text;
+      }
+    }
+  };
+
+  function furnizorPentru(cheie) {
+    const k = String(cheie || '').trim();
+    if (/^sk-ant-/.test(k)) return 'anthropic';
+    if (/^AIza/.test(k)) return 'google';
+    return null;
+  }
 
   // Cheia stă separat de notițe, ca să nu ajungă în copiile de siguranță exportate.
   function cheieAI() {
@@ -1667,11 +1725,39 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       return false;
     }
   }
+  /** Butonul din subsolul orarului spune și cu ce serviciu se scanează. */
+  function etichetaCheie() {
+    const el = $('#orarKeyLabel');
+    if (!el) return;
+    const f = furnizorPentru(cheieAI());
+    el.textContent = f ? 'Scanare: ' + FURNIZORI[f].nume : 'Cheie pentru scanare';
+  }
+
   function deschideCheia() {
     const k = cheieAI();
     $('#cheieInput').value = k;
     $('#cheieSterge').hidden = !k;
+    aratăFurnizorul();
     $('#cheieModal').showModal();
+  }
+
+  /** Spune pe loc ce serviciu s-a recunoscut din cheia scrisă. */
+  function aratăFurnizorul() {
+    const el = $('#cheieDetectat');
+    const k = $('#cheieInput').value.trim();
+    if (!k) {
+      el.textContent = 'Cheia rămâne doar pe dispozitivul acesta: stă separat de notițe, ' +
+                       'deci nu intră în copiile de siguranță. Orele se pot adăuga oricând ' +
+                       'și de mână, fără nicio cheie.';
+      el.classList.remove('e-rau');
+      return;
+    }
+    const f = furnizorPentru(k);
+    el.classList.toggle('e-rau', !f);
+    el.textContent = f
+      ? 'Am recunoscut o cheie ' + FURNIZORI[f].nume + '. Apasă „Salvează".'
+      : 'Cheia asta nu seamănă cu niciuna dintre cele două. Cele de la Google încep cu ' +
+        '„AIza", cele de la Anthropic cu „sk-ant-".';
   }
 
   const SCHEMA_ORAR = {
@@ -1749,12 +1835,19 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     });
   }
 
+  /** Google împachetează eroarea într-un tablou, Anthropic o dă direct. */
+  function detaliuEroare(corp) {
+    const c = Array.isArray(corp) ? corp[0] : corp;
+    return (c && c.error && c.error.message) || '';
+  }
+
   function mesajEroare(status, corp) {
-    const detaliu = corp && corp.error && corp.error.message;
-    if (status === 401) return 'Cheia API nu e valabilă. Verific-o din „Cheie pentru scanare”.';
+    const detaliu = detaliuEroare(corp);
+    const cheieRea = status === 401 || /api[ _]?key|api_key_invalid|unauthenticat/i.test(detaliu);
+    if (cheieRea) return 'Cheia nu e valabilă. Verific-o din „Cheie pentru scanare”.';
     if (status === 403) return 'Cheia nu are drepturi pentru acest model.';
-    if (status === 429) return 'Prea multe cereri într-un timp scurt. Mai încearcă peste un minut.';
-    if (status === 400 && /credit|balance/i.test(detaliu || '')) return 'Contul nu are credit disponibil.';
+    if (status === 429) return 'Ai atins limita gratuită pentru moment. Mai încearcă peste un minut.';
+    if (/credit|balance|quota/i.test(detaliu)) return 'Contul a rămas fără credit sau fără cotă gratuită.';
     if (status >= 500) return 'Serviciul e ocupat acum. Mai încearcă peste puțin.';
     return 'Scanarea a eșuat' + (detaliu ? ': ' + detaliu : ' (cod ' + status + ').');
   }
@@ -1762,7 +1855,10 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   let scanCtrl = null;
 
   async function scaneazaPoza(file) {
-    if (!cheieAI()) { deschideCheia(); return; }
+    const cheie = cheieAI();
+    const numeFurnizor = furnizorPentru(cheie);
+    if (!cheie || !numeFurnizor) { deschideCheia(); return; }
+    const furnizor = FURNIZORI[numeFurnizor];
 
     let img;
     try {
@@ -1777,43 +1873,22 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     $('#scanBusy').showModal();
 
     try {
-      const r = await fetch('https://api.anthropic.com/v1/messages', {
+      const r = await fetch(furnizor.url, {
         method: 'POST',
         signal: scanCtrl.signal,
-        headers: {
-          'content-type': 'application/json',
-          'x-api-key': cheieAI(),
-          'anthropic-version': '2023-06-01',
-          // fără antetul ăsta, apelul direct din browser e respins
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
-        body: JSON.stringify({
-          model: 'claude-opus-5',
-          max_tokens: 16000,
-          output_config: {
-            effort: 'medium',
-            format: { type: 'json_schema', schema: SCHEMA_ORAR }
-          },
-          messages: [{
-            role: 'user',
-            content: [
-              { type: 'image', source: { type: 'base64', media_type: img.media_type, data: img.data } },
-              { type: 'text', text: PROMPT_ORAR }
-            ]
-          }]
-        })
+        headers: furnizor.antete(cheie),
+        body: JSON.stringify(furnizor.corp(img))
       });
 
       let corp = null;
       try { corp = await r.json(); } catch (e) { /* răspuns neașteptat */ }
       if (!r.ok) throw new Error(mesajEroare(r.status, corp));
       if (!corp) throw new Error('Răspuns neașteptat de la serviciu. Mai încearcă o dată.');
-      if (corp.stop_reason === 'refusal') throw new Error('Poza nu a putut fi procesată. Încearcă altă fotografie.');
 
-      const bloc = (corp.content || []).filter(b => b.type === 'text')[0];
-      if (!bloc || !bloc.text) throw new Error('Răspuns gol. Mai încearcă o dată.');
+      const text = furnizor.extrage(corp);
+      if (!text) throw new Error('Poza nu a putut fi procesată. Încearcă altă fotografie.');
       let date;
-      try { date = JSON.parse(bloc.text); }
+      try { date = JSON.parse(text); }
       catch (e) { throw new Error('Nu am putut înțelege răspunsul. Mai încearcă o dată.'); }
 
       arataRezultatul(date);
@@ -2009,7 +2084,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     });
 
     $('#orarScanBtn').addEventListener('click', () => {
-      if (!cheieAI()) { deschideCheia(); return; }
+      if (!furnizorPentru(cheieAI())) { deschideCheia(); return; }
       $('#orarFoto').click();
     });
     $('#orarFoto').addEventListener('change', async e => {
@@ -2071,11 +2146,21 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     $('#scanInlocuieste').addEventListener('click', () => importaScanarea(true));
     $('#scanModal').addEventListener('close', () => { scanRezultat = null; });
 
-    $('#cheieForm').addEventListener('submit', () => {
+    $('#cheieInput').addEventListener('input', aratăFurnizorul);
+
+    $('#cheieForm').addEventListener('submit', e => {
       const v = $('#cheieInput').value.trim();
+      const f = furnizorPentru(v);
+      if (v && !f) {                       // mai bine refuzăm acum decât să eșueze la scanare
+        e.preventDefault();
+        aratăFurnizorul();
+        toast('Cheia nu seamănă nici cu una de la Google, nici cu una de la Anthropic.', 'err');
+        return;
+      }
       if (salveazaCheia(v)) {
-        $('#orarKeyLabel').textContent = v ? 'Schimbă cheia de scanare' : 'Cheie pentru scanare';
-        toast(v ? 'Cheia a fost salvată pe acest dispozitiv' : 'Cheia a fost ștearsă', 'ok');
+        etichetaCheie();
+        toast(v ? 'Cheie ' + FURNIZORI[f].nume + ' salvată pe acest dispozitiv'
+                : 'Cheia a fost ștearsă', 'ok');
       }
     });
     $('#cheieSterge').addEventListener('click', () => {
@@ -2083,7 +2168,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       $('#cheieInput').value = '';
       $('#cheieSterge').hidden = true;
       $('#cheieModal').close();
-      $('#orarKeyLabel').textContent = 'Cheie pentru scanare';
+      etichetaCheie();
       toast('Cheia a fost ștearsă', 'ok');
     });
 

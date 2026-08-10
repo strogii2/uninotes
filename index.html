@@ -471,14 +471,31 @@ window.addEventListener('unhandledrejection', function (e) {
 <dialog class="modal" id="cheieModal">
   <form method="dialog" class="modal__body" id="cheieForm">
     <h2 class="modal__title">Cheie pentru recunoașterea automată</h2>
-    <p class="modal__text">Poza cu orarul e citită de Claude. Îți trebuie o cheie API de la
-      <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.
-      Cheia rămâne doar pe dispozitivul acesta: nu intră în copiile de siguranță și nu ajunge nicăieri altundeva.</p>
+    <p class="modal__text">Poza cu orarul e citită de un model care „vede" imagini. Ai două
+      variante — pui cheia de la oricare, aplicația își dă seama singură care e:</p>
+
+    <ul class="optiuni">
+      <li>
+        <strong>Google AI Studio — gratuit</strong>
+        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">ia cheia de aici</a>
+        <em>Nu cere card. Începe cu <code>AIza…</code> Poza ajunge la Google, iar pe planul
+          gratuit Google poate folosi datele ca să-și îmbunătățească serviciile — nu trimite
+          orare cu date personale sensibile.</em>
+      </li>
+      <li>
+        <strong>Anthropic (Claude) — câțiva cenți pe scanare</strong>
+        <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">ia cheia de aici</a>
+        <em>Cere card. Începe cu <code>sk-ant-…</code> Pozele nu sunt folosite pentru antrenare.</em>
+      </li>
+    </ul>
+
     <label class="field">
       <span>Cheia API</span>
-      <input id="cheieInput" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
+      <input id="cheieInput" type="password" placeholder="AIza… sau sk-ant-…" autocomplete="off" spellcheck="false">
     </label>
-    <p class="modal__text modal__text--mic">O scanare costă câțiva cenți. Orele se pot adăuga oricând și de mână, fără cheie.</p>
+    <p class="modal__text modal__text--mic" id="cheieDetectat">Cheia rămâne doar pe dispozitivul acesta:
+      stă separat de notițe, deci nu intră în copiile de siguranță. Orele se pot adăuga oricând
+      și de mână, fără nicio cheie.</p>
     <div class="modal__actions">
       <button type="button" class="btn btn--danger-ghost" id="cheieSterge" hidden>Șterge cheia</button>
       <span class="spacer"></span>
