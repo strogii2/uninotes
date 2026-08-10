@@ -610,6 +610,16 @@ h1,h2,h3,p{margin:0}
 .md .task input{margin-top:.42em;width:16px;height:16px;accent-color:var(--primary);flex:none;cursor:pointer}
 .md .task.done{color:var(--fg-muted);text-decoration:line-through}
 .md .md-empty{color:var(--fg-muted);font-family:var(--font-ui);font-size:14px}
+.md .md-poza{
+  display:block;max-width:100%;height:auto;margin:var(--sp-4) auto;
+  border-radius:var(--r-md);border:1px solid var(--border);box-shadow:var(--sh-1);
+  background:var(--muted);
+}
+.md .md-poza-lipsa{
+  display:block;padding:var(--sp-4);margin:var(--sp-4) 0;text-align:center;
+  border:1px dashed var(--border-strong);border-radius:var(--r-md);
+  color:var(--fg-muted);font-family:var(--font-ui);font-size:13px;
+}
 
 /* ============================================================
    MODALE
@@ -1193,4 +1203,10 @@ body{-webkit-tap-highlight-color:transparent}
     font-size:9.5pt;line-height:1;color:#000;
   }
   .print-area mark{background:none;border-bottom:1.4pt solid #999}
+  .print-area .md-poza{
+    display:block;max-width:100%;height:auto;margin:8pt auto;
+    border:.6pt solid #bbb;border-radius:2pt;
+    page-break-inside:avoid;break-inside:avoid;
+  }
+  .print-area .md-poza-lipsa{display:none}
 }

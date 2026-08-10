@@ -65,4 +65,24 @@ app.DATA_FILE.write_text("{ asta nu e json valid", encoding="utf-8")
 rezultate["json_stricat_nu_arunca"] = api.load_data() is None
 rezultate["json_stricat_pus_deoparte"] = app.DATA_FILE.with_suffix(".json.stricat").exists()
 
+# --- poze din notițe ---
+import base64
+
+mic_png = base64.b64encode(b"\xff\xd8\xff\xe0 poza de test").decode("ascii")
+api._window = None
+rezultate["poza_salvata"] = api.save_image("abc123", "data:image/jpeg;base64," + mic_png)["ok"]
+adus = api.load_image("abc123")
+rezultate["poza_citita_identic"] = adus == "data:image/jpeg;base64," + mic_png
+rezultate["poza_in_lista"] = "abc123" in api.list_images()
+rezultate["poza_lipsa_da_none"] = api.load_image("nu-exista") is None
+
+# numele vine din interfață: nu trebuie să poată ieși din folderul cu imagini
+api.save_image("../../evadare", "data:image/jpeg;base64," + mic_png)
+rezultate["fara_evadare_din_folder"] = not (app.DATA_DIR.parent / "evadare.jpg").exists()
+rezultate["nume_curatat"] = "evadare" in api.list_images()
+
+rezultate["poza_stearsa"] = api.delete_image("abc123")
+rezultate["poza_chiar_stearsa"] = api.load_image("abc123") is None
+api.delete_image("evadare")
+
 print("REZULTAT " + json.dumps(rezultate, ensure_ascii=False))

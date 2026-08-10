@@ -293,7 +293,9 @@ window.addEventListener('unhandledrejection', function (e) {
           <button class="tool" data-md="link" title="Link"><svg class="ic"><use href="#i-link"></use></svg></button>
           <span class="tool-sep"></span>
           <button class="tool" data-md="datetime" title="Inserează data și ora"><svg class="ic"><use href="#i-clock"></use></svg></button>
+          <button class="tool" id="pozaBtn" title="Adaugă o poză (tablă, slide)"><svg class="ic"><use href="#i-camera"></use></svg></button>
         </div>
+        <input type="file" id="pozaInput" accept="image/*" hidden>
 
         <textarea class="content-input" id="contentInput" spellcheck="true"
           placeholder="Scrie aici… Markdown funcționează: # titlu, **îngroșat**, - listă, - [ ] de făcut, `cod`, > citat"></textarea>
