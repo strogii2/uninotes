@@ -470,9 +470,13 @@ window.addEventListener('unhandledrejection', function (e) {
 
 <dialog class="modal" id="cheieModal">
   <form method="dialog" class="modal__body" id="cheieForm">
-    <h2 class="modal__title">Cheie pentru recunoașterea automată</h2>
-    <p class="modal__text">Poza cu orarul e citită de un model care „vede" imagini. Ai două
-      variante — pui cheia de la oricare, aplicația își dă seama singură care e:</p>
+    <h2 class="modal__title">Cheie pentru scanare <em class="optional">(opțional)</em></h2>
+    <p class="modal__text"><strong>Scanarea merge și fără cheie.</strong> Aplicația citește poza
+      chiar pe dispozitiv, gratis și fără cont — ziua și ora ies de obicei bine, dar sălile și
+      tipul orei trebuie deseori corectate. Prima citire descarcă vreo 6 MB, o singură dată.</p>
+    <p class="modal__text">Cu o cheie, poza e citită de un model care „vede" imagini și
+      rezultatul e mult mai precis. Pui cheia de la oricare dintre cele două — aplicația își
+      dă seama singură care e:</p>
 
     <ul class="optiuni">
       <li>
@@ -494,8 +498,8 @@ window.addEventListener('unhandledrejection', function (e) {
       <input id="cheieInput" type="password" placeholder="AIza… sau sk-ant-…" autocomplete="off" spellcheck="false">
     </label>
     <p class="modal__text modal__text--mic" id="cheieDetectat">Cheia rămâne doar pe dispozitivul acesta:
-      stă separat de notițe, deci nu intră în copiile de siguranță. Orele se pot adăuga oricând
-      și de mână, fără nicio cheie.</p>
+      stă separat de notițe, deci nu intră în copiile de siguranță. Lasă câmpul gol dacă vrei
+      citirea pe dispozitiv.</p>
     <div class="modal__actions">
       <button type="button" class="btn btn--danger-ghost" id="cheieSterge" hidden>Șterge cheia</button>
       <span class="spacer"></span>
