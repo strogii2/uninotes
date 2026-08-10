@@ -50,6 +50,41 @@ def probe(window):
             document.querySelector('#previewBtn').click();
             document.querySelectorAll('#previewPane input[type=checkbox]').length
         """)
+
+        # Orarul: butoanele lui au cedat o dată fiindcă bind() se oprea la primul
+        # element lipsă, așa că fluxul de adăugare a unei ore rămâne verificat aici.
+        out["orar_se_deschide"] = window.evaluate_js("""
+            document.querySelector('#orarBtn').click();
+            document.querySelector('#orarDlg').open
+        """)
+        out["orar_formular_se_deschide"] = window.evaluate_js("""
+            document.querySelector('#orarAddBtn').click();
+            document.querySelector('#oraModal').open
+        """)
+        window.evaluate_js("""
+            document.querySelector('#oraMaterie').value = 'Ora din test';
+            document.querySelector('#oraStart').value = '08:00';
+            document.querySelector('#oraEnd').value = '10:00';
+            document.querySelector('#oraForm button[type="submit"]').click();
+            'ok'
+        """)
+        time.sleep(2)
+
+        # celelalte ferestre noi trebuie să se deschidă la fel
+        for nume, buton, dialog in (("termene", "#termeneBtn", "#termeneDlg"),
+                                    ("repetitie", "#repetitieBtn", "#repetitieDlg")):
+            out[nume + "_se_deschide"] = window.evaluate_js(
+                "document.querySelector('%s').click();"
+                "var d = document.querySelector('%s');"
+                "var deschis = d.open; d.close(); deschis" % (buton, dialog))
+
+        out["fara_elemente_lipsa"] = window.evaluate_js(
+            "!document.querySelector('.toast.toast--err')")
+
+        if app.DATA_FILE.exists():
+            date = json.loads(app.DATA_FILE.read_text(encoding="utf-8"))
+            ore = (date.get("orar") or {}).get("entries", [])
+            out["ora_salvata_pe_disc"] = any(o.get("materie") == "Ora din test" for o in ore)
     except Exception as exc:                                  # noqa: BLE001
         out["exceptie"] = repr(exc)
     finally:

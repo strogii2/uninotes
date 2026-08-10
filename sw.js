@@ -4,13 +4,23 @@
    și să meargă fără internet după prima deschidere.
    ============================================================ */
 
-const CACHE = 'uninotes-v9';
+const CACHE = 'uninotes-v10';
 
-const SHELL = [
+/**
+ * Cele trei fișiere de mai jos trebuie să fie din aceeași versiune, altfel
+ * aplicația se rupe: un app.js nou peste un index.html vechi caută butoane
+ * care nu există. De aceea se pun cu addAll — sau intră toate, sau niciunul,
+ * iar versiunea veche rămâne în funcțiune până data viitoare.
+ */
+const NUCLEU = [
   './',
   './index.html',
   './styles.css',
-  './app.js',
+  './app.js'
+];
+
+/* astea pot lipsi fără să strice nimic */
+const IN_PLUS = [
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -19,10 +29,11 @@ const SHELL = [
 
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE)
-      // addAll pică tot dacă un singur fișier lipsește; le punem una câte una
-      .then(cache => Promise.all(SHELL.map(url => cache.add(url).catch(() => null))))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE).then(cache =>
+      cache.addAll(NUCLEU)                        // pică tot dacă unul singur lipsește
+        .then(() => Promise.all(IN_PLUS.map(u => cache.add(u).catch(() => null))))
+        .then(() => self.skipWaiting())
+    )
   );
 });
 
@@ -38,8 +49,10 @@ self.addEventListener('fetch', event => {
   const req = event.request;
   if (req.method !== 'GET') return;
 
+  // Căutăm doar în cache-ul versiunii curente: un caches.match() nelegat ar putea
+  // scoate un fișier dintr-o versiune veche și l-ar amesteca cu unul nou.
   event.respondWith(
-    caches.match(req).then(hit => {
+    caches.open(CACHE).then(c => c.match(req)).then(hit => {
       if (hit) {
         // fonturile Google se împrospătează în fundal, fără să întârzie afișarea
         if (new URL(req.url).origin !== self.location.origin) {
@@ -57,7 +70,7 @@ self.addEventListener('fetch', event => {
         return res;
       }).catch(() => {
         // offline și necache-uit: pentru navigări întoarcem aplicația
-        if (req.mode === 'navigate') return caches.match('./index.html');
+        if (req.mode === 'navigate') return caches.open(CACHE).then(c => c.match('./index.html'));
         return new Response('', { status: 504, statusText: 'Offline' });
       });
     })
