@@ -1011,6 +1011,53 @@ body{-webkit-tap-highlight-color:transparent}
   padding:var(--sp-5) var(--sp-3);border:1px dashed var(--border-strong);border-radius:var(--r-md);
 }
 
+/* ---- desen ---- */
+.desen__top{gap:var(--sp-3)}
+.desen-unelte{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
+.desen-culori,.desen-grosimi{display:flex;align-items:center;gap:5px}
+.desen-culoare{
+  width:26px;height:26px;border-radius:var(--r-full);
+  /* pe fundal întunecat, negrul de desen ar fi invizibil fără conturul ăsta */
+  border:1px solid color-mix(in srgb,var(--fg) 35%,transparent);
+  transition:transform var(--t) var(--ease-out-back),box-shadow var(--t) var(--ease);
+}
+.desen-culoare:hover{transform:scale(1.12)}
+.desen-culoare[aria-checked="true"]{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--fg-soft)}
+.desen-grosime{
+  width:30px;height:30px;border-radius:var(--r-sm);display:grid;place-items:center;
+  border:1px solid var(--border);background:var(--surface-2);
+  transition:border-color var(--t) var(--ease),background var(--t) var(--ease);
+}
+.desen-grosime span{display:block;border-radius:var(--r-full);background:var(--fg-soft)}
+.desen-grosime[aria-checked="true"]{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 14%,transparent)}
+.desen-grosime[aria-checked="true"] span{background:var(--primary)}
+#desenRadiera[aria-pressed="true"]{background:color-mix(in srgb,var(--primary) 16%,transparent);color:var(--primary)}
+#desenInapoi:disabled,#desenSterge:disabled{opacity:.35;pointer-events:none}
+
+.desen-panza{
+  flex:1;position:relative;min-height:0;
+  padding:var(--sp-3);
+  padding-bottom:calc(var(--sp-3) + env(safe-area-inset-bottom));
+  display:flex;
+}
+#desenCanvas{
+  flex:1;background:#fff;border:1px solid var(--border);border-radius:var(--r-md);
+  box-shadow:var(--sh-1);cursor:crosshair;
+  touch-action:none;                    /* altfel telefonul derulează în loc să deseneze */
+}
+.desen-sfat{
+  position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;
+  color:#94A3B8;font-size:14px;
+}
+
+@media (max-width:860px){
+  .desen__top{gap:var(--sp-2);padding-left:var(--sp-2);padding-right:var(--sp-2)}
+  .desen-unelte{gap:6px}
+  .desen-culoare{width:30px;height:30px}
+  .desen-grosime{width:34px;height:34px}
+  .desen-panza{padding:var(--sp-2)}
+}
+
 /* ---- repetiție ---- */
 .rep-progres{font-size:12.5px;font-weight:700;color:var(--fg-muted);font-variant-numeric:tabular-nums}
 .rep{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:var(--sp-4)}

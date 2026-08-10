@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 8;            // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 9;            // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -300,6 +300,16 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       .slice(0, max || 150);
   }
 
+  /** O notiță fără text poate avea totuși un desen sau o poză — nu e „goală". */
+  function descriereGoala(md) {
+    const desene = (md.match(/!\[[^\]]*\]\(uninotes:d[A-Za-z0-9_-]+\)/g) || []).length;
+    const poze = (md.match(/!\[[^\]]*\]\(uninotes:p[A-Za-z0-9_-]+\)/g) || []).length;
+    if (desene && poze) return 'Desene și poze, fără text';
+    if (desene) return desene === 1 ? 'Un desen, fără text' : desene + ' desene, fără text';
+    if (poze) return poze === 1 ? 'O poză, fără text' : poze + ' poze, fără text';
+    return 'Notiță goală';
+  }
+
   async function saveAs(filename, content, type, okMsg) {
     if (api()) {
       const path = await api().save_file(filename, content);   // dialog nativ „Salvează ca”
@@ -471,6 +481,218 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         }
       });
     }));
+  }
+
+  /* ==========================================================
+     DESEN
+     Liniile se țin ca puncte, nu ca pixeli: așa „anulează" e o simplă
+     scoatere din listă, iar desenul se poate redesena curat la orice mărime
+     (rotirea telefonului nu-l mai strică).
+     ========================================================== */
+  const CULORI_DESEN = ['#0F172A', '#2563EB', '#DC2626', '#059669', '#CA8A04', '#7C3AED'];
+  const GROSIMI_DESEN = [2, 4, 8, 16];
+  const FUNDAL_DESEN = '#FFFFFF';
+  const MAX_LATURA_DESEN = 1800;
+
+  let desen = null;      // { linii, culoare, grosime, radiera, ctx, dpr }
+
+  function ctxDesen() {
+    const c = $('#desenCanvas');
+    return c ? c.getContext('2d') : null;
+  }
+
+  function redeseneaza() {
+    const c = $('#desenCanvas'), g = ctxDesen();
+    if (!c || !g || !desen) return;
+    g.setTransform(desen.dpr, 0, 0, desen.dpr, 0, 0);
+    g.fillStyle = FUNDAL_DESEN;
+    g.fillRect(0, 0, c.width / desen.dpr, c.height / desen.dpr);
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+
+    desen.linii.forEach(l => {
+      if (!l.puncte.length) return;
+      g.strokeStyle = l.culoare;
+      g.lineWidth = l.grosime;
+      g.beginPath();
+      if (l.puncte.length === 1) {
+        // un singur punct: un bulin, altfel n-ar apărea nimic
+        const p = l.puncte[0];
+        g.arc(p.x, p.y, l.grosime / 2, 0, Math.PI * 2);
+        g.fillStyle = l.culoare;
+        g.fill();
+        return;
+      }
+      g.moveTo(l.puncte[0].x, l.puncte[0].y);
+      for (let i = 1; i < l.puncte.length - 1; i++) {
+        const a = l.puncte[i], b = l.puncte[i + 1];
+        g.quadraticCurveTo(a.x, a.y, (a.x + b.x) / 2, (a.y + b.y) / 2);
+      }
+      const ultim = l.puncte[l.puncte.length - 1];
+      g.lineTo(ultim.x, ultim.y);
+      g.stroke();
+    });
+
+    const sfat = $('#desenSfat');
+    if (sfat) sfat.hidden = desen.linii.length > 0;
+    $('#desenInapoi').disabled = !desen.linii.length;
+    $('#desenSterge').disabled = !desen.linii.length;
+  }
+
+  /**
+   * Mărimea o dă CSS-ul; noi punem doar rezoluția pânzei. Nu scriem stiluri
+   * înapoi, ca observatorul de mărime să nu se declanșeze singur la nesfârșit.
+   */
+  function potrivestePanza() {
+    const c = $('#desenCanvas');
+    if (!c || !desen) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const l = c.clientWidth, i = c.clientHeight;
+    if (!l || !i) return;                       // dialogul încă nu are dimensiuni
+    const cheie = l + 'x' + i + '@' + dpr;
+    if (cheie === desen.dim) return;
+    desen.dim = cheie;
+    desen.dpr = dpr;
+    c.width = Math.round(l * dpr);
+    c.height = Math.round(i * dpr);
+    redeseneaza();
+  }
+
+  function randeazaUnelteDesen() {
+    const culori = $('#desenCulori');
+    culori.innerHTML = '';
+    CULORI_DESEN.forEach(cul => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'desen-culoare';
+      b.style.background = cul;
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', String(cul === desen.culoare && !desen.radiera));
+      b.setAttribute('aria-label', 'Culoare ' + cul);
+      b.addEventListener('click', () => {
+        desen.culoare = cul;
+        desen.radiera = false;
+        randeazaUnelteDesen();
+      });
+      culori.appendChild(b);
+    });
+
+    const grosimi = $('#desenGrosimi');
+    grosimi.innerHTML = '';
+    GROSIMI_DESEN.forEach(gr => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'desen-grosime';
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', String(gr === desen.grosime));
+      b.setAttribute('aria-label', 'Grosime ' + gr);
+      b.innerHTML = '<span style="width:' + Math.min(18, gr + 2) + 'px;height:' +
+                    Math.min(18, gr + 2) + 'px"></span>';
+      b.addEventListener('click', () => { desen.grosime = gr; randeazaUnelteDesen(); });
+      grosimi.appendChild(b);
+    });
+
+    $('#desenRadiera').setAttribute('aria-pressed', String(!!desen.radiera));
+  }
+
+  function legPanza() {
+    const c = $('#desenCanvas');
+    if (!c || c.dataset.legat) return;
+    c.dataset.legat = '1';
+
+    // prinde și deschiderea dialogului, și rotirea telefonului
+    if (window.ResizeObserver) new ResizeObserver(potrivestePanza).observe(c);
+
+    const punct = e => {
+      const r = c.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
+
+    c.addEventListener('pointerdown', e => {
+      if (!desen) return;
+      e.preventDefault();
+      desen.pointer = e.pointerId;
+      // captura ajută degetul să nu „scape" de pe pânză, dar nu ne bazăm pe ea:
+      // în unele situații aruncă, și atunci restul funcției n-ar mai rula
+      try { c.setPointerCapture(e.pointerId); } catch (err) { /* mergem și fără */ }
+      desen.linii.push({
+        culoare: desen.radiera ? FUNDAL_DESEN : desen.culoare,
+        // radiera trebuie să acopere, deci e mai groasă decât pixul
+        grosime: desen.radiera ? Math.max(16, desen.grosime * 4) : desen.grosime,
+        puncte: [punct(e)]
+      });
+      redeseneaza();
+    });
+
+    c.addEventListener('pointermove', e => {
+      if (!desen || desen.pointer !== e.pointerId || !desen.linii.length) return;
+      e.preventDefault();
+      const linie = desen.linii[desen.linii.length - 1];
+      // pe ecrane rapide, punctele intermediare fac linia netedă; când lista
+      // vine goală, ne bazăm pe evenimentul în sine — altfel s-ar pierde puncte
+      const intermediare = (e.getCoalescedEvents && e.getCoalescedEvents()) || [];
+      const puncte = intermediare.length ? intermediare : [e];
+      puncte.forEach(x => linie.puncte.push(punct(x)));
+      redeseneaza();
+    });
+
+    const gata = e => {
+      if (!desen || desen.pointer !== e.pointerId) return;
+      desen.pointer = null;
+      try { c.releasePointerCapture(e.pointerId); } catch (err) { /* deja eliberat */ }
+    };
+    c.addEventListener('pointerup', gata);
+    c.addEventListener('pointercancel', gata);
+    c.addEventListener('pointerleave', gata);
+  }
+
+  function deschideDesenul() {
+    if (!activeNote()) return;
+    desen = { linii: [], culoare: CULORI_DESEN[0], grosime: GROSIMI_DESEN[1],
+              radiera: false, dpr: 1, dim: '', pointer: null };
+    randeazaUnelteDesen();
+    $('#desenDlg').showModal();
+    legPanza();
+    potrivestePanza();                          // observatorul prinde și restul
+  }
+
+  async function salveazaDesenul() {
+    if (!desen || !desen.linii.length) { toast('Desenul e gol.', 'err'); return; }
+    const c = $('#desenCanvas');
+
+    // la nevoie micșorăm, ca fișierul să rămână rezonabil
+    let sursa = c;
+    const f = Math.min(1, MAX_LATURA_DESEN / Math.max(c.width, c.height));
+    if (f < 1) {
+      const mic = document.createElement('canvas');
+      mic.width = Math.round(c.width * f);
+      mic.height = Math.round(c.height * f);
+      const g = mic.getContext('2d');
+      g.fillStyle = FUNDAL_DESEN;
+      g.fillRect(0, 0, mic.width, mic.height);
+      g.drawImage(c, 0, 0, mic.width, mic.height);
+      sursa = mic;
+    }
+    // PNG, nu JPEG: liniile subțiri ies curate și fișierul e mai mic pe desene
+    const url = sursa.toDataURL('image/png');
+
+    const nota = activeNote();
+    if (!nota) return;
+    const id = 'd' + uid();
+    if (!await poze.pune(id, url)) { toast('Nu am putut salva desenul.', 'err'); return; }
+
+    const ta = $('#contentInput');
+    const marca = '![desen](uninotes:' + id + ')';
+    const start = ta.selectionStart, sfarsit = ta.selectionEnd;
+    const inainte = ta.value.slice(0, start);
+    const rand = inainte && !/\n\n$/.test(inainte) ? (/\n$/.test(inainte) ? '\n' : '\n\n') : '';
+    ta.setRangeText(rand + marca + '\n', start, sfarsit, 'end');
+    nota.content = ta.value;
+    touch(nota);
+    desen = null;
+    $('#desenDlg').close();
+    if (ui.preview) renderEditor();
+    toast('Desen adăugat în notiță', 'ok');
   }
 
   /* ==========================================================
@@ -1071,7 +1293,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         '<div class="note-card__top"><span class="note-card__title">' +
           highlight(n.title || 'Fără titlu', q) + '</span>' +
           '<span class="note-card__flags">' + flags + '</span></div>' +
-        '<div class="note-card__excerpt">' + highlight(plainExcerpt(n.content) || 'Notiță goală', q) + '</div>' +
+        '<div class="note-card__excerpt">' + highlight(plainExcerpt(n.content) || descriereGoala(n.content), q) + '</div>' +
         '<div class="note-card__meta">' +
           (s ? '<span class="note-card__subject"><span class="dot" style="background:' + s.color + '"></span>' +
                escapeHtml(s.name) + '</span><span class="sep">·</span>' : '') +
@@ -3495,7 +3717,30 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         if (activeNote()) $('#pozaInput').click();
         return;
       }
+      if (b.id === 'desenBtn') { deschideDesenul(); return; }
       applyMd(b.dataset.md);
+    });
+
+    /* ---------- desen ---------- */
+    $('#desenInchide').addEventListener('click', () => $('#desenDlg').close());
+    $('#desenInchide2').addEventListener('click', () => $('#desenDlg').close());
+    $('#desenDlg').addEventListener('close', () => { desen = null; });
+    $('#desenSalveaza').addEventListener('click', salveazaDesenul);
+    $('#desenRadiera').addEventListener('click', () => {
+      if (!desen) return;
+      desen.radiera = !desen.radiera;
+      randeazaUnelteDesen();
+    });
+    $('#desenInapoi').addEventListener('click', () => {
+      if (!desen || !desen.linii.length) return;
+      desen.linii.pop();
+      redeseneaza();
+    });
+    $('#desenSterge').addEventListener('click', async () => {
+      if (!desen || !desen.linii.length) return;
+      const ok = await confirmDialog('Ștergi tot desenul?',
+        'Cele ' + desen.linii.length + ' linii vor dispărea.', 'Șterge');
+      if (ok && desen) { desen.linii = []; redeseneaza(); }
     });
 
     $('#pozaInput').addEventListener('change', async e => {

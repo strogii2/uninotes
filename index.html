@@ -303,6 +303,7 @@ window.addEventListener('unhandledrejection', function (e) {
           <span class="tool-sep"></span>
           <button class="tool" data-md="datetime" title="Inserează data și ora"><svg class="ic"><use href="#i-clock"></use></svg></button>
           <button class="tool" id="pozaBtn" title="Adaugă o poză (tablă, slide)"><svg class="ic"><use href="#i-camera"></use></svg></button>
+          <button class="tool" id="desenBtn" title="Desenează (schemă, formulă, grafic)"><svg class="ic"><use href="#i-pen"></use></svg></button>
         </div>
         <input type="file" id="pozaInput" accept="image/*" hidden>
 
@@ -449,6 +450,49 @@ window.addEventListener('unhandledrejection', function (e) {
 </dialog>
 
 <input type="file" id="orarFoto" accept="image/*" hidden>
+
+<!-- ============ DESEN ============ -->
+<dialog class="orar-dlg" id="desenDlg" aria-label="Desen">
+  <div class="orar">
+    <header class="orar__top desen__top">
+      <button class="icon-btn only-mobile" id="desenInchide2" aria-label="Renunță la desen">
+        <svg class="ic"><use href="#i-back"></use></svg>
+      </button>
+      <h2 class="orar__title no-mobile">
+        <svg class="ic"><use href="#i-pen"></use></svg>
+        <span>Desen</span>
+      </h2>
+
+      <div class="desen-unelte" role="toolbar" aria-label="Unelte de desen">
+        <div class="desen-culori" id="desenCulori" role="radiogroup" aria-label="Culoare"></div>
+        <div class="desen-grosimi" id="desenGrosimi" role="radiogroup" aria-label="Grosime"></div>
+        <button class="icon-btn" id="desenRadiera" aria-pressed="false" title="Radieră" aria-label="Radieră">
+          <svg class="ic" viewBox="0 0 24 24"><path d="m6 18 9-9 5 5-4 4H8z"/><path d="M4 21h16"/></svg>
+        </button>
+        <button class="icon-btn" id="desenInapoi" title="Anulează ultima linie" aria-label="Anulează ultima linie">
+          <svg class="ic"><use href="#i-restore"></use></svg>
+        </button>
+        <button class="icon-btn" id="desenSterge" title="Șterge tot" aria-label="Șterge tot">
+          <svg class="ic"><use href="#i-trash"></use></svg>
+        </button>
+      </div>
+
+      <span class="spacer"></span>
+      <button class="btn btn--primary btn--sm" id="desenSalveaza">
+        <svg class="ic"><use href="#i-check"></use></svg>
+        <span class="btn__text">Adaugă în notiță</span>
+      </button>
+      <button class="icon-btn no-mobile" id="desenInchide" aria-label="Renunță la desen">
+        <svg class="ic"><use href="#i-x"></use></svg>
+      </button>
+    </header>
+
+    <div class="desen-panza" id="desenPanza">
+      <canvas id="desenCanvas"></canvas>
+      <p class="desen-sfat" id="desenSfat">Desenează cu degetul, cu mouse-ul sau cu creionul.</p>
+    </div>
+  </div>
+</dialog>
 
 <!-- ============ TERMENE ============ -->
 <dialog class="orar-dlg" id="termeneDlg" aria-label="Termene și examene">
