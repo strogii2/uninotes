@@ -1086,7 +1086,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     h1 { font-family: Arial, Helvetica, sans-serif; font-size: 20pt; margin:0 0 4pt; }
     h2 { font-family: Arial, Helvetica, sans-serif; font-size: 14pt; margin:16pt 0 6pt; }
     h3 { font-family: Arial, Helvetica, sans-serif; font-size: 12pt; margin:12pt 0 4pt; }
-    .meta { font-family: Arial, Helvetica, sans-serif; font-size: 9pt; color:#555;
+    .print-meta { font-family: Arial, Helvetica, sans-serif; font-size: 9pt; color:#555;
             border-bottom:1px solid #ccc; padding-bottom:8pt; margin:0 0 14pt; }
     p { margin: 0 0 9pt; }
     ul, ol { margin: 0 0 9pt; padding-left: 18pt; }
@@ -1107,33 +1107,45 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     a { color:#000; }
   `;
 
+  /**
+   * Trimite notița la imprimantă din aplicație.
+   * Punem notița formatată în #printArea, iar foaia de stil de print ascunde
+   * restul paginii — iese la fel, fie că erai în editor, fie în previzualizare.
+   * Merge la fel în browser, în aplicația instalată pe telefon și în cea de Windows
+   * (WebView2 deschide previzualizarea de printare începând cu versiunea 98;
+   * pe acest calculator e 151).
+   */
   function printNote() {
     const note = activeNote();
     if (!note) return;
 
-    // WebView2 nu deschide dialogul de printare din JS: pregătim pagina în Python
-    // și o deschidem în browserul implicit, unde printarea funcționează normal.
+    const s = subjectOf(note);
+    const bits = [];
+    if (s) bits.push(s.name + (s.prof ? ' — ' + s.prof : ''));
+    if ((note.tags || []).length) bits.push(note.tags.map(t => '#' + t).join(' '));
+    bits.push('modificat ' + fmtFull.format(new Date(note.updatedAt)));
+
+    const meta = '<p class="print-meta">' + escapeHtml(bits.join('  ·  ')) + '</p>';
+    const corp = meta + renderMarkdown(note.content);
+    $('#printArea').innerHTML =
+      '<h1>' + escapeHtml(note.title || 'Fără titlu') + '</h1>' + corp;
+
     if (api()) {
-      const s = subjectOf(note);
-      const bits = [];
-      if (s) bits.push(s.name + (s.prof ? ' — ' + s.prof : ''));
-      if ((note.tags || []).length) bits.push(note.tags.map(t => '#' + t).join(' '));
-      bits.push('modificat ' + fmtFull.format(new Date(note.updatedAt)));
-      const head = '<p class="meta">' + escapeHtml(bits.join('  ·  ')) + '</p>';
-      api().print_note(escapeHtml(note.title || 'Fără titlu'), head + renderMarkdown(note.content), PRINT_CSS)
-        .then(ok => toast(ok ? 'Notița s-a deschis pentru printare' : 'Nu am putut deschide printarea',
-                          ok ? 'ok' : 'err'))
+      // Fereastra de Windows ignoră window.print(), dar WebView2 are dialogul lui,
+      // pe care îl chemăm din Python. Dacă nu merge, deschidem notița în browser.
+      Promise.resolve(api().print_ui())
+        .then(ok => {
+          if (ok) return null;
+          return api().print_note(escapeHtml(note.title || 'Fără titlu'), corp, PRINT_CSS)
+            .then(o => toast(o ? 'Notița s-a deschis în browser pentru printare'
+                               : 'Nu am putut deschide printarea', o ? 'ok' : 'err'));
+        })
         .catch(() => toast('Nu am putut deschide printarea', 'err'));
       return;
     }
 
-    const wasPreview = ui.preview;
-    $('#previewPane').innerHTML = renderMarkdown(note.content);
-    $('#previewPane').hidden = false;
-    setTimeout(() => {
-      window.print();
-      if (!wasPreview) $('#previewPane').hidden = true;
-    }, 60);
+    // browser și aplicația instalată pe telefon
+    setTimeout(() => window.print(), 60);   // o clipă, ca stilurile de print să prindă conținutul
   }
 
   async function importText(text) {
@@ -1259,6 +1271,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     });
 
     $('#previewBtn').addEventListener('click', () => setPreview(!ui.preview));
+    $('#printBtn').addEventListener('click', printNote);
 
     $('#previewPane').addEventListener('change', e => {
       const cb = e.target.closest('input[type="checkbox"][data-task]');
@@ -1416,6 +1429,12 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         renderList(); renderSidebar(); toast('Salvat', 'ok'); return;
       }
       if (mod && e.key.toLowerCase() === 'p' && !e.shiftKey) {
+        // preluăm Ctrl+P: altfel browserul ar printa toată interfața
+        e.preventDefault();
+        if (activeNote()) printNote();
+        return;
+      }
+      if (mod && e.key.toLowerCase() === 'e') {
         if (!activeNote()) return;
         e.preventDefault(); setPreview(!ui.preview); return;
       }

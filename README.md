@@ -75,9 +75,10 @@ Dacă fișierul ajunge totuși corupt, aplicația îl pune deoparte ca `notite.j
   luminos din bara laterală, alegerea ta rămâne.
 - **Export**: o notiță ca `.md`, sau tot ce ai ca `.json`, prin fereastra obișnuită
   „Salvează ca". **Import** înapoi din `.json`.
-- **Printare / PDF** — notița se pregătește curat, fără interfață, și se deschide în
-  browserul implicit, unde apeși `Ctrl+P`. (Fereastra aplicației nu poate deschide singură
-  dialogul de printare.)
+- **Printare direct din aplicație** — butonul cu imprimantă din bara editorului, sau
+  `Ctrl+P`. Se deschide dialogul obișnuit de printare, de unde alegi imprimanta sau
+  *Salvează ca PDF*. Pe hârtie ajunge doar notița — titlul, materia, etichetele și data,
+  apoi conținutul formatat; fără bara laterală, fără butoane.
 
 ## Scurtături
 
@@ -86,7 +87,8 @@ Dacă fișierul ajunge totuși corupt, aplicația îl pune deoparte ca `notite.j
 | `Ctrl+N` | Notiță nouă |
 | `Ctrl+K` | Caută |
 | `Ctrl+S` | Salvează acum |
-| `Ctrl+P` | Previzualizare Markdown |
+| `Ctrl+P` | Printează notița |
+| `Ctrl+E` | Previzualizare Markdown |
 | `Ctrl+D` | Favorită |
 | `Ctrl+Shift+P` | Fixează sus |
 | `Ctrl+B` / `Ctrl+I` | Îngroșat / înclinat |
@@ -109,12 +111,18 @@ Dacă fișierul ajunge totuși corupt, aplicația îl pune deoparte ca `notite.j
 | `desktop\icon.ico` | iconița aplicației |
 | `desktop\make_icon.py` | generează iconița |
 | `desktop\selftest.py` | test automat: pornește aplicația și verifică salvarea pe disc |
-| `desktop\test_api.py` | test automat pentru export, import și printare |
+| `desktop\test_api.py` | test automat pentru export, import și pregătirea printării |
+| `desktop\test_print.py` | test automat: verifică dacă fereastra deschide dialogul de printare |
 
 Interfața rămâne un web app obișnuit — poți deschide `index.html` direct în browser dacă
 vrei; atunci notițele se salvează în browser, nu în fișier.
 
 ## Cum funcționează pe dinăuntru
+
+La printare, WebView2 e o excepție: ignoră `window.print()` din JavaScript, așa că fereastra
+de Windows cheamă dialogul propriu al motorului (`ShowPrintUI`) prin puntea de Python. În
+browser și pe telefon se folosește `window.print()` obișnuit. Dacă apelul nativ nu reușește,
+aplicația deschide notița în browserul implicit, ca să poți printa oricum.
 
 Fereastra e nativă (WinForms), iar interfața e randată de **Edge WebView2** — motorul deja
 prezent în Windows 11. De asta executabilul are 13 MB și nu 200: nu împachetează un browser

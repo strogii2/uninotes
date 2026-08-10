@@ -152,6 +152,33 @@ class Api:
         except Exception:
             return False
 
+    def print_ui(self):
+        """
+        Deschide dialogul de printare al ferestrei.
+
+        WebView2 ignoră window.print() din JavaScript, dar expune ShowPrintUI în API-ul
+        nativ. Trebuie chemat pe firul de interfață, altfel COM-ul refuză accesul.
+        """
+        try:
+            from System import Action                       # oferit de pythonnet
+
+            control = self.window.native.browser.webview
+            rezultat = []
+
+            def arata():
+                try:
+                    # ShowPrintUI cere tipul enum al WebView2, nu un întreg
+                    from Microsoft.Web.WebView2.Core import CoreWebView2PrintDialogKind
+                    control.CoreWebView2.ShowPrintUI(CoreWebView2PrintDialogKind.Browser)
+                    rezultat.append(True)
+                except Exception:
+                    rezultat.append(False)
+
+            control.Invoke(Action(arata))
+            return bool(rezultat) and rezultat[0]
+        except Exception:
+            return False
+
     def print_note(self, title, body_html, css):
         """
         WebView2 nu deschide dialogul de printare din JS, așa că scriem notița

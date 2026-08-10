@@ -219,8 +219,11 @@
         <button class="icon-btn" id="favBtn" aria-pressed="false" title="Favorită (Ctrl+D)" aria-label="Favorită">
           <svg class="ic"><use href="#i-star"></use></svg>
         </button>
-        <button class="icon-btn" id="previewBtn" aria-pressed="false" title="Previzualizare (Ctrl+P)" aria-label="Previzualizare">
+        <button class="icon-btn" id="previewBtn" aria-pressed="false" title="Previzualizare (Ctrl+E)" aria-label="Previzualizare">
           <svg class="ic"><use href="#i-eye"></use></svg>
+        </button>
+        <button class="icon-btn" id="printBtn" title="Printează notița (Ctrl+P)" aria-label="Printează notița">
+          <svg class="ic"><use href="#i-print"></use></svg>
         </button>
         <div class="menu-wrap">
           <button class="icon-btn" id="moreBtn" aria-haspopup="true" aria-expanded="false" aria-label="Mai multe opțiuni">
@@ -228,7 +231,7 @@
           </button>
           <div class="menu" id="moreMenu" hidden role="menu">
             <button role="menuitem" data-act="export"><svg class="ic"><use href="#i-download"></use></svg> Exportă ca .md</button>
-            <button role="menuitem" data-act="print"><svg class="ic"><use href="#i-print"></use></svg> Printează / PDF</button>
+            <button role="menuitem" data-act="print"><svg class="ic"><use href="#i-print"></use></svg> Printează / salvează PDF</button>
             <button role="menuitem" data-act="duplicate"><svg class="ic"><use href="#i-layers"></use></svg> Duplică</button>
             <button role="menuitem" data-act="archive"><svg class="ic"><use href="#i-archive"></use></svg> <span id="archLabel">Arhivează</span></button>
             <button role="menuitem" data-act="delete" class="is-danger"><svg class="ic"><use href="#i-trash"></use></svg> Șterge</button>
@@ -323,7 +326,8 @@
       <li><kbd>Ctrl</kbd><kbd>N</kbd><span>Notiță nouă</span></li>
       <li><kbd>Ctrl</kbd><kbd>K</kbd><span>Caută</span></li>
       <li><kbd>Ctrl</kbd><kbd>S</kbd><span>Salvează acum</span></li>
-      <li><kbd>Ctrl</kbd><kbd>P</kbd><span>Previzualizare Markdown</span></li>
+      <li><kbd>Ctrl</kbd><kbd>P</kbd><span>Printează notița</span></li>
+      <li><kbd>Ctrl</kbd><kbd>E</kbd><span>Previzualizare Markdown</span></li>
       <li><kbd>Ctrl</kbd><kbd>D</kbd><span>Marchează favorită</span></li>
       <li><kbd>Ctrl</kbd><kbd>B</kbd> / <kbd>Ctrl</kbd><kbd>I</kbd><span>Îngroșat / înclinat</span></li>
       <li><kbd>Esc</kbd><span>Închide fereastra</span></li>
@@ -336,6 +340,9 @@
     </div>
   </div>
 </dialog>
+
+<!-- ce ajunge pe hârtie: se completează la printare, invizibil pe ecran -->
+<article class="print-area md" id="printArea" aria-hidden="true"></article>
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
 

@@ -733,13 +733,77 @@ body{-webkit-tap-highlight-color:transparent}
   }
 }
 
+/* ============================================================
+   PRINTARE
+   Pe hârtie ajunge doar #printArea, completat înainte de print.
+   Așa iese la fel indiferent dacă erai în editor sau în previzualizare.
+   ============================================================ */
+.print-area{display:none}
+
+@page{ margin:18mm 16mm }
+
 @media print{
-  body{overflow:visible;background:#fff}
-  .app{display:block;height:auto}
-  .sidebar,.list-pane,.editor__top,.editor__foot,.toolbar,.tags-row,.toasts,.scrim{display:none !important}
-  .editor-pane,.editor,.editor__scroll{display:block;overflow:visible;padding:0;background:#fff}
-  .title-input{font-size:24pt;color:#000;border:0}
-  .content-input{display:none}
-  .preview{display:block !important;color:#000;font-size:11.5pt}
-  .md a{color:#000}
+  html,body{height:auto;overflow:visible;background:#fff}
+  body > *:not(.print-area){display:none !important}
+
+  .print-area{
+    display:block !important;
+    font-family:'Lora',Georgia,'Times New Roman',serif;
+    color:#000;font-size:11.5pt;line-height:1.62;
+    /* altfel imprimanta sare peste fundaluri: capul de tabel, blocurile de cod */
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;
+  }
+  .print-area h1{
+    font-family:'Plus Jakarta Sans',Arial,Helvetica,sans-serif;
+    font-size:20pt;font-weight:800;letter-spacing:-.02em;margin:0 0 5pt;
+  }
+  .print-meta{
+    font-family:'Plus Jakarta Sans',Arial,Helvetica,sans-serif;
+    font-size:9pt;color:#444;margin:0 0 15pt;
+    border-bottom:.6pt solid #bbb;padding-bottom:8pt;
+  }
+  .print-area h2{font-size:14pt;margin:15pt 0 5pt}
+  .print-area h3{font-size:12pt;margin:12pt 0 4pt}
+  .print-area h1,.print-area h2,.print-area h3{page-break-after:avoid;break-after:avoid}
+  .print-area p{margin:0 0 8pt}
+  .print-area ul,.print-area ol{margin:0 0 8pt;padding-left:16pt}
+  .print-area li{margin:2pt 0}
+  .print-area li::marker{color:#000}
+  .print-area blockquote{
+    margin:9pt 0;padding-left:11pt;border-left:1.6pt solid #888;
+    color:#222;font-style:italic;
+  }
+  .print-area a{color:#000;text-decoration:underline}
+  .print-area code{
+    font-family:Consolas,'Courier New',monospace;font-size:9.5pt;
+    background:#f2f2f2;padding:.5pt 3pt;border-radius:2pt;
+  }
+  .print-area pre{
+    background:#f6f6f6;border:.6pt solid #ddd;border-radius:3pt;padding:7pt;
+    white-space:pre-wrap;word-break:break-word;      /* codul lung nu iese din pagină */
+    page-break-inside:avoid;break-inside:avoid;margin:8pt 0;
+  }
+  .print-area pre code{background:none;padding:0}
+  .print-area table{
+    border-collapse:collapse;width:100%;margin:9pt 0;font-size:10pt;
+    font-family:'Plus Jakarta Sans',Arial,Helvetica,sans-serif;
+    page-break-inside:avoid;break-inside:avoid;
+  }
+  .print-area th,.print-area td{border:.6pt solid #999;padding:4pt 6pt;text-align:left}
+  .print-area th{background:#eee;font-weight:700}
+  .print-area hr{border:0;border-top:.6pt solid #ccc;margin:13pt 0}
+  .print-area .task{list-style:none;margin-left:-16pt;display:flex;gap:6pt;align-items:flex-start}
+  .print-area .task.done{color:#555;text-decoration:line-through}
+  /* bifele native se tipăresc ca pătrate pline; le desenăm noi, ca să se vadă
+     clar pe hârtie care e făcut și care nu */
+  .print-area .task input{
+    appearance:none;-webkit-appearance:none;
+    width:9pt;height:9pt;flex:none;margin:2.6pt 0 0;
+    border:.8pt solid #333;border-radius:1.5pt;background:#fff;position:relative;
+  }
+  .print-area .task input:checked::after{
+    content:'✓';position:absolute;left:.6pt;top:-2.6pt;
+    font-size:9.5pt;line-height:1;color:#000;
+  }
+  .print-area mark{background:none;border-bottom:1.4pt solid #999}
 }
