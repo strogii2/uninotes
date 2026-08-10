@@ -527,13 +527,39 @@ h1,h2,h3,p{margin:0}
 .tool .ic{width:17px;height:17px}
 .tool-sep{width:1px;height:20px;background:var(--border);margin:0 4px}
 
-.content-input{
-  display:block;width:100%;min-height:52vh;resize:none;border:0;background:transparent;
+/* Notița: casete de text cu pozele și desenele așezate între ele. Casetele
+   cresc singure pe înălțime, ca notița să se deruleze dintr-o bucată, nu
+   fiecare bucată separat. */
+.flux{display:flex;flex-direction:column;padding-bottom:var(--sp-6)}
+.ed-text{
+  display:block;width:100%;resize:none;border:0;background:transparent;
   font-family:var(--font-read);font-size:17px;line-height:1.75;color:var(--fg);
-  padding:0 0 var(--sp-6);
+  padding:0;overflow:hidden;min-height:1.75em;
 }
-.content-input:focus{outline:none}
-.content-input::placeholder{color:var(--fg-muted);font-family:var(--font-ui);font-size:15px}
+.ed-text:focus{outline:none}
+.ed-text::placeholder{color:var(--fg-muted);font-family:var(--font-ui);font-size:15px}
+.ed-text.e-singur{min-height:52vh}       /* notiță fără imagini: toată pagina */
+.ed-text.e-ultimul{min-height:11em}      /* loc de scris sub ultima imagine */
+
+.ed-media{
+  margin:var(--sp-3) 0;border:1px solid var(--border);border-radius:var(--r-lg);
+  overflow:hidden;background:var(--surface-2);
+}
+.ed-media img{
+  display:block;width:100%;height:auto;max-height:56vh;object-fit:contain;background:#fff;
+}
+.ed-media__bara{
+  display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);
+  padding:5px 6px 5px 11px;border-top:1px solid var(--border);
+  font-family:var(--font-ui);font-size:12px;color:var(--fg-muted);
+}
+.ed-media__btn{
+  font:inherit;color:var(--fg-muted);padding:6px 10px;border-radius:var(--r-sm);
+  min-height:34px;transition:background var(--t) var(--ease),color var(--t) var(--ease);
+}
+.ed-media__btn:hover{
+  background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--danger);
+}
 
 .editor__foot{
   display:flex;align-items:center;gap:var(--sp-3);
@@ -813,7 +839,7 @@ body{-webkit-tap-highlight-color:transparent}
   .tool{width:40px;height:40px}
   .title-input{font-size:25px}
   .editor__scroll{padding:var(--sp-4) var(--sp-4) var(--sp-7)}
-  .content-input{font-size:16.5px}
+  .ed-text{font-size:16.5px}
   .subject-pick select{max-width:130px}
 }
 

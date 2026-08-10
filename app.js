@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 11;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 12;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -452,15 +452,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     const id = 'p' + uid();
     if (!await poze.pune(id, url)) { toast('Nu am putut salva poza.', 'err'); return; }
 
-    const ta = $('#contentInput');
-    const marca = '![poză](uninotes:' + id + ')';
-    const start = ta.selectionStart, sfarsit = ta.selectionEnd;
-    const inainte = ta.value.slice(0, start);
-    const nevoieDeRand = inainte && !/\n\n$/.test(inainte) ? (/\n$/.test(inainte) ? '\n' : '\n\n') : '';
-    const text = nevoieDeRand + marca + '\n';
-    ta.setRangeText(text, start, sfarsit, 'end');
-    nota.content = ta.value;
-    touch(nota);
+    puneMedia('poză', id);
     if (ui.preview) renderEditor();
     toast('Poză adăugată', 'ok');
   }
@@ -683,18 +675,230 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     const id = 'd' + uid();
     if (!await poze.pune(id, url)) { toast('Nu am putut salva desenul.', 'err'); return; }
 
-    const ta = $('#contentInput');
-    const marca = '![desen](uninotes:' + id + ')';
-    const start = ta.selectionStart, sfarsit = ta.selectionEnd;
-    const inainte = ta.value.slice(0, start);
-    const rand = inainte && !/\n\n$/.test(inainte) ? (/\n$/.test(inainte) ? '\n' : '\n\n') : '';
-    ta.setRangeText(rand + marca + '\n', start, sfarsit, 'end');
-    nota.content = ta.value;
-    touch(nota);
     desen = null;
+    // închidem întâi fereastra: cât e deschisă, restul paginii nu poate primi
+    // cursorul, iar noi vrem să lăsăm cursorul sub desen
     $('#desenDlg').close();
+    puneMedia('desen', id);
     if (ui.preview) renderEditor();
     toast('Desen adăugat în notiță', 'ok');
+  }
+
+  /* ==========================================================
+     EDITORUL NOTIȚEI
+     Notița se scrie în casete de text obișnuite, iar pozele și desenele stau
+     între ele, exact în locul în care au fost puse. Așa le vezi în timp ce
+     scrii, nu doar la previzualizare. Am păstrat casetele native tocmai
+     fiindcă pe telefon aduc tot ce e greu de imitat: tastatura, corectarea,
+     selecția cu degetul.
+     ========================================================== */
+  const RE_MEDIA_LINIE = /^[ \t]*!\[([^\]]*)\]\(uninotes:([pd][A-Za-z0-9_-]+)\)[ \t]*$/gm;
+  const PLACEHOLDER_NOTITA =
+    'Scrie aici… Markdown funcționează: # titlu, **îngroșat**, - listă, ' +
+    '- [ ] de făcut, `cod`, > citat';
+
+  /** Rupe textul notiței în bucăți: text, poză/desen, text, … */
+  function bucatiDinContinut(md) {
+    const bucati = [];
+    const re = new RegExp(RE_MEDIA_LINIE.source, 'gm');
+    let de_la = 0, m;
+    while ((m = re.exec(md)) !== null) {
+      // rândurile goale din jurul marcajului doar despart imaginea de text,
+      // așa că nu le arătăm în casetă — le punem la loc la salvare
+      bucati.push({ tip: 'text', text: md.slice(de_la, m.index).replace(/\n{1,2}$/, '') });
+      bucati.push({ tip: 'media', alt: m[1], id: m[2] });
+      de_la = m.index + m[0].length;
+      if (md[de_la] === '\n') de_la++;
+      re.lastIndex = de_la;
+    }
+    bucati.push({ tip: 'text', text: md.slice(de_la) });
+    return bucati;
+  }
+
+  /** Drumul invers: din bucăți înapoi în textul notiței. */
+  function textDinBucati(bucati) {
+    let out = '';
+    bucati.forEach(b => {
+      if (b.tip === 'text') { out += b.text; return; }
+      if (out && !/\n$/.test(out)) out += '\n';
+      if (out) out += '\n';                     // un rând gol, ca imaginea să fie bloc
+      out += '![' + b.alt + '](uninotes:' + b.id + ')\n';
+    });
+    return out;
+  }
+
+  function bucatiDinPagina() {
+    return $$('#editorFlux > *').map(el => el.tagName === 'TEXTAREA'
+      ? { tip: 'text', text: el.value }
+      : { tip: 'media', alt: el.dataset.alt || '', id: el.dataset.id });
+  }
+
+  function continutEditor() { return textDinBucati(bucatiDinPagina()); }
+
+  /** Caseta pe care scrie omul acum; dacă n-a atins niciuna, ultima. */
+  let ultimaCaseta = null;
+  function casetaActiva() {
+    const a = document.activeElement;
+    if (a && a.classList && a.classList.contains('ed-text')) return a;
+    if (ultimaCaseta && ultimaCaseta.isConnected) return ultimaCaseta;
+    const toate = $$('#editorFlux > textarea');
+    return toate.length ? toate[toate.length - 1] : null;
+  }
+
+  /** Caseta crește cât textul, ca notița să se deruleze dintr-o bucată. */
+  function creste(ta) {
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 'px';
+  }
+
+  /**
+   * O casetă ascunsă nu are înălțime de măsurat, deci refacem socoteala ori de
+   * câte ori notița redevine vizibilă sau se schimbă lățimea (textul se rupe
+   * altfel pe rânduri).
+   */
+  function potrivesteCasetele() {
+    requestAnimationFrame(() => $$('#editorFlux > textarea').forEach(creste));
+  }
+
+  function construiesteFlux(md) {
+    const flux = $('#editorFlux');
+    if (!flux) return;
+    const bucati = bucatiDinContinut(md || '');
+    flux.innerHTML = '';
+
+    bucati.forEach((b, i) => {
+      if (b.tip === 'text') {
+        const ta = document.createElement('textarea');
+        ta.className = 'ed-text';
+        ta.spellcheck = true;
+        ta.value = b.text;
+        if (i === 0) ta.placeholder = PLACEHOLDER_NOTITA;
+        flux.appendChild(ta);
+        return;
+      }
+      const fig = document.createElement('figure');
+      fig.className = 'ed-media';
+      fig.dataset.id = b.id;
+      fig.dataset.alt = b.alt;
+
+      const img = document.createElement('img');
+      img.dataset.poza = b.id;
+      img.alt = b.alt || (b.id[0] === 'd' ? 'desen' : 'poză');
+      fig.appendChild(img);
+
+      const bara = document.createElement('figcaption');
+      bara.className = 'ed-media__bara';
+      bara.innerHTML =
+        '<span class="ed-media__nume">' + (b.id[0] === 'd' ? 'Desen' : 'Poză') + '</span>' +
+        '<button type="button" class="ed-media__btn" data-act="sterge">Șterge</button>';
+      fig.appendChild(bara);
+      flux.appendChild(fig);
+    });
+
+    // o singură casetă înseamnă notiță fără imagini: îi dăm toată pagina
+    const casete = $$('#editorFlux > textarea');
+    if (casete.length === 1) casete[0].classList.add('e-singur');
+    else if (casete.length) casete[casete.length - 1].classList.add('e-ultimul');
+    casete.forEach(creste);
+    rezolvaPozele(flux);
+  }
+
+  /** Pune o poză sau un desen fix acolo unde stă cursorul, între rânduri. */
+  function puneMedia(alt, id) {
+    const nota = activeNote();
+    if (!nota) return;
+    const ta = casetaActiva();
+    const bucati = bucatiDinPagina();
+    const copii = $$('#editorFlux > *');
+    let unde = ta ? copii.indexOf(ta) : -1;
+    if (unde < 0) unde = Math.max(0, bucati.length - 1);
+
+    // caseta se rupe în două, iar imaginea se așază exact la cursor
+    const val = ta ? ta.value : '';
+    const poz = ta ? ta.selectionStart : val.length;
+    bucati.splice(unde, 1,
+      { tip: 'text', text: val.slice(0, poz) },
+      { tip: 'media', alt: alt, id: id },
+      { tip: 'text', text: val.slice(poz) });
+
+    nota.content = textDinBucati(bucati);
+    construiesteFlux(nota.content);
+    touch(nota);
+
+    // cursorul trece dedesubtul imaginii, ca să poți scrie mai departe
+    const dupa = $('#editorFlux').children[unde + 2];
+    if (dupa && dupa.tagName === 'TEXTAREA') {
+      dupa.focus();
+      dupa.setSelectionRange(0, 0);
+    }
+  }
+
+  function sincronizeazaNotita() {
+    const n = activeNote();
+    if (!n) return;
+    n.content = continutEditor();
+    touch(n);
+  }
+
+  /** Scoate o poză sau un desen din notiță și lipește textul la loc. */
+  async function stergeMedia(fig) {
+    const nota = activeNote();
+    if (!fig || !nota) return;
+    const eDesen = (fig.dataset.id || '')[0] === 'd';
+    const ok = await confirmDialog(eDesen ? 'Ștergi desenul?' : 'Ștergi poza?',
+      'Dispare din notiță. Textul din jur rămâne neatins.', 'Șterge');
+    if (!ok) return;
+
+    const unde = $$('#editorFlux > *').indexOf(fig);
+    if (unde < 1) return;
+    const bucati = bucatiDinPagina();
+    const inainte = bucati[unde - 1], dupa = bucati[unde + 1];
+    const lipit = {
+      tip: 'text',
+      text: (inainte ? inainte.text : '') +
+            (inainte && inainte.text && dupa && dupa.text ? '\n' : '') +
+            (dupa ? dupa.text : '')
+    };
+    bucati.splice(unde - 1, 3, lipit);
+    nota.content = textDinBucati(bucati);
+    construiesteFlux(nota.content);
+    touch(nota);
+    curataPozeOrfane();                       // fișierul rămas fără notiță pleacă
+    toast(eDesen ? 'Desen șters' : 'Poză ștearsă', 'ok');
+  }
+
+  /**
+   * Cursorul trebuie să treacă peste imagini ca peste un rând obișnuit, altfel
+   * casetele ar părea despărțituri în care rămâi blocat.
+   */
+  function treciIntreCasete(e) {
+    if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return false;
+    const ta = e.target;
+    const copii = $$('#editorFlux > *');
+    const i = copii.indexOf(ta);
+    if (i < 0) return false;
+
+    const vecin = pas => {
+      for (let k = i + pas; k >= 0 && k < copii.length; k += pas) {
+        if (copii[k].tagName === 'TEXTAREA') return copii[k];
+      }
+      return null;
+    };
+    const gol = ta.selectionStart === ta.selectionEnd;
+    const laInceput = gol && ta.selectionStart === 0;
+    const laSfarsit = gol && ta.selectionStart === ta.value.length;
+
+    const sus = laInceput && (e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'Backspace');
+    const jos = laSfarsit && (e.key === 'ArrowDown' || e.key === 'ArrowRight');
+    const tinta = sus ? vecin(-1) : (jos ? vecin(1) : null);
+    if (!tinta) return false;
+
+    e.preventDefault();
+    tinta.focus();
+    const p = sus ? tinta.value.length : 0;
+    tinta.setSelectionRange(p, p);
+    return true;
   }
 
   /* ==========================================================
@@ -1414,7 +1618,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     empty.hidden = true; ed.hidden = false;
 
     $('#titleInput').value = note.title;
-    $('#contentInput').value = note.content;
+    construiesteFlux(note.content);
     renderSubjectSelect(note);
     renderTags(note);
     renderStats(note);
@@ -1431,12 +1635,14 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     ui.preview = !!on;
     const note = activeNote();
     $('#previewBtn').setAttribute('aria-pressed', String(ui.preview));
-    $('#contentInput').hidden = ui.preview;
+    $('#editorFlux').hidden = ui.preview;
     $('#toolbar').hidden = ui.preview;
     $('#previewPane').hidden = !ui.preview;
     if (ui.preview && note) {
       $('#previewPane').innerHTML = renderMarkdown(note.content);
       rezolvaPozele($('#previewPane'));
+    } else {
+      potrivesteCasetele();
     }
   }
 
@@ -1532,6 +1738,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
 
   function showPane(p) {
     $('#app').dataset.pane = p;
+    if (p === 'editor') potrivesteCasetele();
   }
 
   function openNav() { $('#app').classList.add('nav-open'); $('#scrim').hidden = false; }
@@ -1592,9 +1799,9 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
      MARKDOWN TOOLBAR
      ========================================================== */
   function applyMd(kind) {
-    const ta = $('#contentInput');
+    const ta = casetaActiva();
     const note = activeNote();
-    if (!note) return;
+    if (!note || !ta) return;
     const start = ta.selectionStart, end = ta.selectionEnd;
     const val = ta.value;
     const sel = val.slice(start, end);
@@ -1635,7 +1842,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       }
     }
     ta.focus();
-    note.content = ta.value;
+    creste(ta);
+    note.content = continutEditor();       // textul notiței e suma tuturor casetelor
     touch(note);
   }
 
@@ -2029,7 +2237,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     renderSidebar(); renderList(); renderEditor();
     showPane('editor');
     // cursorul direct în text: titlul e deja scris
-    const ta = $('#contentInput');
+    const ta = $$('#editorFlux > textarea')[0];
     if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
     toast('Notiță pornită: ' + nota.title, 'ok');
   }
@@ -3665,14 +3873,34 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       touch(n);
     });
 
-    pe('#contentInput', 'input', e => {
-      const n = activeNote(); if (!n) return;
-      n.content = e.target.value;
-      touch(n);
+    // notița are acum mai multe casete, deci ascultăm containerul lor
+    pe('#editorFlux', 'input', e => {
+      if (!e.target.classList.contains('ed-text')) return;
+      ultimaCaseta = e.target;
+      creste(e.target);
+      sincronizeazaNotita();
+    });
+    pe('#editorFlux', 'focusin', e => {
+      if (e.target.classList.contains('ed-text')) ultimaCaseta = e.target;
+    });
+    pe('#editorFlux', 'click', e => {
+      const b = e.target.closest('.ed-media__btn');
+      if (!b) return;
+      const fig = b.closest('.ed-media');
+      if (b.dataset.act === 'sterge') stergeMedia(fig);
+    });
+
+    // la rotirea telefonului textul se rupe altfel pe rânduri
+    let cronoCasete = null;
+    window.addEventListener('resize', () => {
+      clearTimeout(cronoCasete);
+      cronoCasete = setTimeout(potrivesteCasetele, 120);
     });
 
     // continuare automată a listelor la Enter
-    pe('#contentInput', 'keydown', e => {
+    pe('#editorFlux', 'keydown', e => {
+      if (!e.target.classList.contains('ed-text')) return;
+      if (treciIntreCasete(e)) return;
       if (e.key !== 'Enter' || e.shiftKey) return;
       const ta = e.target, pos = ta.selectionStart;
       if (pos !== ta.selectionEnd) return;
@@ -3689,7 +3917,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         else if (/\[/.test(marker)) marker = marker.replace(/\[[xX]\]/, '[ ]');
         ta.setRangeText('\n' + m[1] + marker + ' ', pos, pos, 'end');
       }
-      const n = activeNote(); if (n) { n.content = ta.value; touch(n); }
+      creste(ta);
+      sincronizeazaNotita();
     });
 
     pe('#subjectSelect', 'change', e => {
@@ -3755,7 +3984,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         ? lines[i].replace(/\[\s?\]/, '[x]')
         : lines[i].replace(/\[[xX]\]/, '[ ]');
       n.content = lines.join('\n');
-      $('#contentInput').value = n.content;
+      construiesteFlux(n.content);
       cb.closest('.task').classList.toggle('done', cb.checked);
       touch(n);
     });
@@ -3950,7 +4179,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         if (!activeNote()) return;
         e.preventDefault(); $('#favBtn').click(); return;
       }
-      if (mod && document.activeElement === $('#contentInput')) {
+      if (mod && document.activeElement &&
+          document.activeElement.classList.contains('ed-text')) {
         if (e.key.toLowerCase() === 'b') { e.preventDefault(); applyMd('b'); return; }
         if (e.key.toLowerCase() === 'i') { e.preventDefault(); applyMd('i'); return; }
       }

@@ -124,12 +124,21 @@ def probe(window):
         window.resize(1320, 860)
         time.sleep(1.5)
 
-        # salvarea în notiță
+        # salvarea în notiță: desenul trebuie să se vadă printre rânduri
         window.evaluate_js("document.querySelector('#desenSalveaza').click(); 'ok'")
-        time.sleep(2)
-        out["continut_notita"] = window.evaluate_js(
-            "(document.querySelector('#contentInput') || {}).value || ''")
-        out["desen_in_notita"] = "uninotes:d" in (out.get("continut_notita") or "")
+        time.sleep(2.5)
+        out["desen_vizibil_in_notita"] = window.evaluate_js(
+            "document.querySelectorAll('#editorFlux img').length")
+        out["desen_are_sursa"] = window.evaluate_js(
+            "Array.prototype.slice.call(document.querySelectorAll('#editorFlux img'))"
+            ".filter(function (i) { return i.src && i.src.length > 40; }).length")
+        out["cursor_sub_desen"] = window.evaluate_js(
+            "!!(document.activeElement && document.activeElement.classList"
+            ".contains('ed-text'))")
+        if app.DATA_FILE.exists():
+            date = json.loads(app.DATA_FILE.read_text(encoding="utf-8"))
+            nota = (date.get("notes") or [{}])[0]
+            out["desen_in_notita"] = "uninotes:d" in (nota.get("content") or "")
 
         imagini = app.DATA_DIR / "imagini"
         out["fisiere_imagine"] = sorted(p.name for p in imagini.glob("*")) if imagini.exists() else []
