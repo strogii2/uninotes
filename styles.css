@@ -1001,6 +1001,43 @@ body{-webkit-tap-highlight-color:transparent}
   padding:var(--sp-5) var(--sp-3);border:1px dashed var(--border-strong);border-radius:var(--r-md);
 }
 
+/* ---- termene ---- */
+.termene{display:flex;flex-direction:column;gap:var(--sp-2);max-width:720px}
+.termene__cap{
+  font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--fg-muted);margin-top:var(--sp-3);padding:0 2px;
+}
+.termene__cap:first-child{margin-top:0}
+.termen{
+  display:flex;align-items:center;gap:var(--sp-2);
+  background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--border-strong);
+  border-radius:var(--r-md);box-shadow:var(--sh-1);padding:8px 10px 8px 8px;
+  transition:box-shadow var(--t) var(--ease),opacity var(--t) var(--ease);
+}
+.termen:hover{box-shadow:var(--sh-2)}
+.termen.e-restant{border-color:var(--danger);border-left-color:var(--danger)}
+.termen.e-azi{outline:2px solid var(--primary);outline-offset:1px}
+.termen.e-gata{opacity:.5}
+.termen.e-gata .termen__titlu{text-decoration:line-through}
+.termen__bifa{
+  flex:none;display:grid;place-items:center;width:26px;height:26px;
+  border:2px solid var(--border-strong);border-radius:var(--r-sm);color:transparent;
+  transition:border-color var(--t) var(--ease),background var(--t) var(--ease),color var(--t) var(--ease);
+}
+.termen__bifa:hover{border-color:var(--primary)}
+.termen__bifa[aria-checked="true"]{background:var(--accent);border-color:var(--accent);color:#04301F}
+.termen__bifa .ic{width:14px;height:14px;stroke-width:3}
+.termen__corp{flex:1;min-width:0;text-align:left;display:flex;flex-direction:column;gap:3px;padding:2px 0}
+.termen__titlu{font-size:14px;font-weight:600;line-height:1.35;overflow-wrap:anywhere}
+.termen__meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:11.5px;color:var(--fg-muted)}
+.termen__cand{
+  flex:none;display:flex;flex-direction:column;align-items:flex-end;
+  font-size:12.5px;font-weight:700;color:var(--fg-soft);line-height:1.3;
+}
+.termen__cand small{font-weight:500;font-size:11px;color:var(--fg-muted);font-variant-numeric:tabular-nums}
+.termen.e-restant .termen__cand{color:var(--danger)}
+@media (hover:none){ .termen__bifa{width:32px;height:32px} }
+
 /* ---- verificarea scanării ---- */
 .modal--wide{max-width:min(620px,calc(100vw - 24px))}
 .modal--slim{max-width:min(340px,calc(100vw - 32px))}
