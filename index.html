@@ -142,6 +142,11 @@ window.addEventListener('unhandledrejection', function (e) {
         <span>Termene</span>
         <em class="count" id="cTermene">—</em>
       </button>
+      <button class="nav__item nav__item--orar" id="repetitieBtn">
+        <svg class="ic"><use href="#i-alarm"></use></svg>
+        <span>Repetiție</span>
+        <em class="count" id="cRepetitie">—</em>
+      </button>
     </nav>
 
     <div class="section-head">
@@ -372,6 +377,11 @@ window.addEventListener('unhandledrejection', function (e) {
       <li><kbd>Ctrl</kbd><kbd>B</kbd> / <kbd>Ctrl</kbd><kbd>I</kbd><span>Îngroșat / înclinat</span></li>
       <li><kbd>Esc</kbd><span>Închide fereastra</span></li>
     </ul>
+    <h3 class="modal__sub">Repetiție pentru examen</h3>
+    <p class="modal__text">Orice linie de forma <code>întrebare :: răspuns</code> devine o
+      întrebare de repetat. Spațiile din jurul lui <code>::</code> contează — așa nu se
+      confundă cu <code>std::vector</code> din cod.</p>
+
     <h3 class="modal__sub">Markdown acceptat</h3>
     <p class="modal__text"><code># Titlu</code>, <code>**îngroșat**</code>, <code>*înclinat*</code>, <code>- listă</code>, <code>1. numerotat</code>, <code>- [ ] de făcut</code>, <code>&gt; citat</code>, <code>`cod`</code>, <code>```bloc```</code>, <code>[link](url)</code>, <code>---</code>, <code>| tabel |</code></p>
     <div class="modal__actions">
@@ -458,6 +468,29 @@ window.addEventListener('unhandledrejection', function (e) {
     </header>
     <div class="orar__body">
       <div class="termene" id="termeneLista"></div>
+    </div>
+  </div>
+</dialog>
+
+<!-- ============ REPETIȚIE ============ -->
+<dialog class="orar-dlg" id="repetitieDlg" aria-label="Repetiție pentru examen">
+  <div class="orar">
+    <header class="orar__top">
+      <button class="icon-btn only-mobile" id="repetitieClose2" aria-label="Închide repetiția">
+        <svg class="ic"><use href="#i-back"></use></svg>
+      </button>
+      <h2 class="orar__title">
+        <svg class="ic"><use href="#i-alarm"></use></svg>
+        <span>Repetiție</span>
+      </h2>
+      <span class="spacer"></span>
+      <span class="rep-progres" id="repProgres"></span>
+      <button class="icon-btn no-mobile" id="repetitieClose" aria-label="Închide repetiția">
+        <svg class="ic"><use href="#i-x"></use></svg>
+      </button>
+    </header>
+    <div class="orar__body">
+      <div class="rep" id="repCorp"></div>
     </div>
   </div>
 </dialog>

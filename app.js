@@ -60,6 +60,7 @@
       settings: { theme: 'dark' },
       orar: { entries: [] },
       termene: [],
+      repetitii: {},
       subjects: [
         { id: s1, name: 'Analiză Matematică', color: '#2563EB', prof: 'Prof. Popescu' },
         { id: s2, name: 'Programare Orientată pe Obiecte', color: '#059669', prof: 'Conf. Ionescu' },
@@ -193,6 +194,9 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       nota: String(t.nota || '').slice(0, 120),
       gata: !!t.gata
     })).filter(t => t.titlu && t.data);
+
+    // starea repetițiilor: amprentă → { pas, urmator }
+    if (!parsed.repetitii || typeof parsed.repetitii !== 'object') parsed.repetitii = {};
 
     return parsed;
   }
@@ -703,6 +707,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       b.classList.toggle('is-active', ui.filter.type === b.dataset.filter));
     actualizeazaInsigna();
     actualizeazaInsignaTermene();
+    actualizeazaInsignaRepetitie();
 
     const wrap = $('#subjectList');
     wrap.innerHTML = '';
@@ -1546,7 +1551,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         // backup-urile făcute înainte de apariția orarului nu-l au: păstrăm ce e acum,
         // ca importul unei copii vechi să nu șteargă orele pe tăcute
         orar: (data.orar && Array.isArray(data.orar.entries)) ? data.orar : orar(),
-        termene: Array.isArray(data.termene) ? data.termene : termene()
+        termene: Array.isArray(data.termene) ? data.termene : termene(),
+        repetitii: (data.repetitii && typeof data.repetitii === 'object') ? data.repetitii : repetitii()
       };
       normalize(db);
 
@@ -2764,6 +2770,184 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     $('#termenModal').showModal();
   }
 
+  /* ==========================================================
+     REPETIȚIE PENTRU EXAMEN
+     Întrebările vin din propriile notițe: orice linie „ceva :: altceva".
+     Starea se ține pe amprenta întrebării, nu pe poziția ei în text, ca să
+     supraviețuiască editării și rearanjării notiței.
+     ========================================================== */
+  const PASI_ZILE = [1, 3, 7, 16, 35, 75];
+  const CURAND = 10 * 60 * 1000;              // „nu știam" → revine în aceeași sesiune
+  const MAX_INTR_SESIUNE = 40;
+
+  let sesiune = null;                          // { carti, i, aratat, stiute, gresite }
+
+  function repetitii() {
+    if (!db.repetitii || typeof db.repetitii !== 'object') db.repetitii = {};
+    return db.repetitii;
+  }
+
+  /** Amprentă scurtă și stabilă a întrebării (djb2). */
+  function amprenta(text) {
+    let h = 5381;
+    const s = faraDiacritice(text).replace(/\s+/g, ' ').trim();
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+    return (h >>> 0).toString(36);
+  }
+
+  /**
+   * „ :: " cu spații în jur, ca să nu confundăm cu „std::vector".
+   * Blocurile de cod sunt sărite cu totul.
+   */
+  function cartiDinNotite() {
+    const carti = [];
+    const vazute = {};
+    db.notes.forEach(n => {
+      if (n.archived) return;
+      let inCod = false;
+      (n.content || '').split('\n').forEach(linie => {
+        if (/^\s*```/.test(linie)) { inCod = !inCod; return; }
+        if (inCod) return;
+        const m = /^\s*(?:[-*+]\s+)?(.+?)\s+::\s+(.+?)\s*$/.exec(linie);
+        if (!m) return;
+        const fata = m[1].trim(), spate = m[2].trim();
+        if (fata.length < 2 || !spate) return;
+        const id = amprenta(fata);
+        if (vazute[id]) return;
+        vazute[id] = true;
+        carti.push({ id: id, fata: fata, spate: spate, noteId: n.id, subjectId: n.subjectId });
+      });
+    });
+    return carti;
+  }
+
+  function cartiDeRepetat() {
+    const acum = now(), stare = repetitii();
+    const toate = cartiDinNotite();
+    const scadente = toate.filter(c => stare[c.id] && stare[c.id].urmator <= acum)
+                          .sort((a, b) => stare[a.id].urmator - stare[b.id].urmator);
+    const noi = toate.filter(c => !stare[c.id]);
+    return scadente.concat(noi).slice(0, MAX_INTR_SESIUNE);
+  }
+
+  function actualizeazaInsignaRepetitie() {
+    const el = $('#cRepetitie'), btn = $('#repetitieBtn');
+    if (!el || !btn) return;
+    const n = cartiDeRepetat().length;
+    const total = cartiDinNotite().length;
+    el.textContent = n ? String(n) : (total ? '0' : '—');
+    btn.title = total
+      ? n ? n + (n === 1 ? ' întrebare de repetat' : ' întrebări de repetat')
+          : 'Nimic de repetat acum — revino mai târziu'
+      : 'Scrie în notițe linii de forma „întrebare :: răspuns"';
+  }
+
+  function raspunde(stiut) {
+    if (!sesiune) return;
+    const c = sesiune.carti[sesiune.i];
+    const stare = repetitii();
+    const vechi = stare[c.id];
+    if (stiut) {
+      // după o greșeală pasul e -1, deci răspunsul corect reia de la o zi, nu de la trei
+      const anterior = vechi ? Math.max(-1, vechi.pas) : -1;
+      const pas = Math.min(anterior + 1, PASI_ZILE.length - 1);
+      stare[c.id] = { pas: pas, urmator: now() + PASI_ZILE[pas] * 86400000 };
+      sesiune.stiute++;
+    } else {
+      stare[c.id] = { pas: -1, urmator: now() + CURAND };
+      sesiune.gresite++;
+      sesiune.carti.push(c);                   // se mai întoarce o dată în sesiunea asta
+    }
+    persist();
+    sesiune.i++;
+    sesiune.aratat = false;
+    renderRepetitie();
+  }
+
+  function renderRepetitie() {
+    const corp = $('#repCorp'), progres = $('#repProgres');
+    if (!corp) return;
+    corp.innerHTML = '';
+
+    if (!sesiune || sesiune.i >= sesiune.carti.length) {
+      progres.textContent = '';
+      const gata = document.createElement('div');
+      gata.className = 'rep-gata';
+      if (!sesiune) {
+        gata.innerHTML = '<h3>Nimic de repetat acum</h3>' +
+          '<p>Întrebările se iau din notițele tale: scrie o linie de forma ' +
+          '<code>întrebare :: răspuns</code> și apare aici.</p>' +
+          '<p class="rep-exemplu">Legea lui Ohm :: U = I · R</p>';
+      } else {
+        gata.innerHTML = '<h3>Gata pentru azi</h3>' +
+          '<p>Ai trecut prin ' + sesiune.stiute + (sesiune.stiute === 1 ? ' întrebare știută' : ' întrebări știute') +
+          (sesiune.gresite ? ' și ' + sesiune.gresite + (sesiune.gresite === 1 ? ' greșită' : ' greșite') : '') +
+          '. Cele greșite revin mai repede.</p>';
+      }
+      corp.appendChild(gata);
+      actualizeazaInsignaRepetitie();
+      return;
+    }
+
+    const c = sesiune.carti[sesiune.i];
+    const s = c.subjectId ? db.subjects.find(x => x.id === c.subjectId) : null;
+    progres.textContent = (sesiune.i + 1) + ' / ' + sesiune.carti.length;
+
+    const carte = document.createElement('div');
+    carte.className = 'rep-carte';
+    carte.innerHTML =
+      (s ? '<span class="rep-materie"></span>' : '') +
+      '<p class="rep-fata"></p>' +
+      (sesiune.aratat ? '<p class="rep-spate"></p>' : '');
+    if (s) {
+      $('.rep-materie', carte).textContent = s.name;
+      $('.rep-materie', carte).style.color = s.color;
+    }
+    $('.rep-fata', carte).textContent = c.fata;
+    if (sesiune.aratat) $('.rep-spate', carte).textContent = c.spate;
+    corp.appendChild(carte);
+
+    const actiuni = document.createElement('div');
+    actiuni.className = 'rep-actiuni';
+    if (!sesiune.aratat) {
+      const b = document.createElement('button');
+      b.className = 'btn btn--primary';
+      b.textContent = 'Arată răspunsul';
+      b.addEventListener('click', () => { sesiune.aratat = true; renderRepetitie(); });
+      actiuni.appendChild(b);
+    } else {
+      const nu = document.createElement('button');
+      nu.className = 'btn btn--danger-ghost';
+      nu.textContent = 'Nu știam';
+      nu.addEventListener('click', () => raspunde(false));
+      const da = document.createElement('button');
+      da.className = 'btn btn--primary';
+      da.textContent = 'Știam';
+      da.addEventListener('click', () => raspunde(true));
+      actiuni.appendChild(nu);
+      actiuni.appendChild(da);
+    }
+    corp.appendChild(actiuni);
+
+    const spre = document.createElement('button');
+    spre.className = 'ghost-btn rep-spre-notita';
+    spre.innerHTML = '<svg class="ic"><use href="#i-book"></use></svg><span>Vezi notița</span>';
+    spre.addEventListener('click', () => {
+      $('#repetitieDlg').close();
+      openNote(c.noteId);
+      showPane('editor');
+    });
+    corp.appendChild(spre);
+  }
+
+  function deschideRepetitia() {
+    const carti = cartiDeRepetat();
+    sesiune = carti.length ? { carti: carti, i: 0, aratat: false, stiute: 0, gresite: 0 } : null;
+    renderRepetitie();
+    closeNav();
+    $('#repetitieDlg').showModal();
+  }
+
   /* ---------- anunțul de dimineață ---------- */
   /** Ce e restant sau bate la ușă în următoarele 7 zile. */
   function anuntaTermenele() {
@@ -2838,6 +3022,12 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       toast(tip ? 'Am reținut: săptămâna asta e ' + (tip === 'para' ? 'pară' : 'impară')
                 : 'Arăt din nou toate orele', 'ok');
     });
+
+    /* ---------- repetiție ---------- */
+    $('#repetitieBtn').addEventListener('click', deschideRepetitia);
+    $('#repetitieClose').addEventListener('click', () => $('#repetitieDlg').close());
+    $('#repetitieClose2').addEventListener('click', () => $('#repetitieDlg').close());
+    $('#repetitieDlg').addEventListener('close', () => { sesiune = null; renderSidebar(); });
 
     /* ---------- termene ---------- */
     $('#termeneBtn').addEventListener('click', deschideTermene);
