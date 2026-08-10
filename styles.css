@@ -311,13 +311,23 @@ h1,h2,h3,p{margin:0}
 .note-row.is-swiping,.note-row.is-deleting{overflow:hidden}
 .note-row__bg{
   position:absolute;inset:0;display:flex;align-items:center;gap:9px;
-  padding-left:20px;border-radius:var(--r-lg);
-  background:linear-gradient(90deg,var(--danger),color-mix(in srgb,var(--danger) 72%,#000));
+  border-radius:var(--r-lg);
   color:#fff;font-size:13px;font-weight:700;letter-spacing:-.01em;
   opacity:0;transition:opacity var(--t) var(--ease);
 }
-.note-row.is-swiping .note-row__bg,
-.note-row.is-deleting .note-row__bg{opacity:1}
+/* dreapta = favorită (galben, aliniat la stânga, de unde apare) */
+.note-row__bg--fav{
+  justify-content:flex-start;padding-left:20px;
+  background:linear-gradient(90deg,#F59E0B,color-mix(in srgb,#F59E0B 68%,#92400E));
+}
+/* stânga = ștergere (roșu, aliniat la dreapta) */
+.note-row__bg--del{
+  justify-content:flex-end;padding-right:20px;
+  background:linear-gradient(270deg,var(--danger),color-mix(in srgb,var(--danger) 72%,#000));
+}
+.note-row.is-right .note-row__bg--fav{opacity:1}
+.note-row.is-left .note-row__bg--del,
+.note-row.is-deleting .note-row__bg--del{opacity:1}
 .note-row__bg .ic{width:19px;height:19px;stroke-width:2;transition:transform var(--t) var(--ease-out-back)}
 .note-row.is-armed .note-row__bg .ic{transform:scale(1.28)}
 .note-row.is-swiping .note-card{box-shadow:var(--sh-3)}
@@ -325,7 +335,7 @@ h1,h2,h3,p{margin:0}
 /* dispariția la ștergere: notița pleacă spre dreapta, apoi rândul se strânge */
 .note-row.is-deleting{overflow:hidden;animation:randStrans .34s var(--ease) forwards}
 .note-row.is-deleting .note-card{
-  transform:translateX(115%) !important;opacity:0;
+  transform:translateX(-115%) !important;opacity:0;
   transition:transform .24s var(--ease),opacity .2s var(--ease);
 }
 @keyframes randStrans{
@@ -682,6 +692,29 @@ kbd{
 }
 
 /* ============================================================
+   BUTON PLUTITOR (acțiunea principală, la degetul mare)
+   ============================================================ */
+.fab{
+  position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));
+  width:56px;height:56px;border-radius:var(--r-full);z-index:40;
+  display:grid;place-items:center;
+  background:var(--primary);color:var(--on-primary);
+  box-shadow:0 8px 22px color-mix(in srgb,var(--primary) 45%,transparent);
+  transition:transform var(--t-fast) var(--ease),background var(--t) var(--ease);
+}
+.fab:hover{background:var(--primary-hover)}
+.fab:active{transform:scale(.92)}
+.fab .ic{width:26px;height:26px;stroke-width:2.3}
+.app[data-pane="editor"] .fab{display:none}     /* în editor ai deja ce-ți trebuie */
+body.are-tastatura .fab{display:none}
+.doar-telefon{display:flex}
+@media (min-width:861px){
+  .fab{display:none}
+  /* selector mai specific decât `.menu button{display:flex}`, altfel n-ar avea efect */
+  .menu .doar-telefon{display:none}              /* pe desktop sunt butoane în bară */
+}
+
+/* ============================================================
    INSTALARE PE TELEFON
    ============================================================ */
 .install-hint{
@@ -740,6 +773,29 @@ body{-webkit-tap-highlight-color:transparent}
   .list-pane,.editor-pane{grid-column:1;grid-row:1;border-right:0}
   .app[data-pane="list"] .editor-pane{display:none}
   .app[data-pane="editor"] .list-pane{display:none}
+  /* bara de formatare stă jos, la degetul mare, și urcă odată cu tastatura.
+     Fără tastatură se așază exact peste bara de stare (38px). */
+  .toolbar{
+    position:fixed;left:0;right:0;top:auto;z-index:35;
+    bottom:calc(var(--tastatura,0px) + 38px + env(safe-area-inset-bottom));
+    margin:0;border-radius:0;border-left:0;border-right:0;border-bottom:0;
+    justify-content:space-around;gap:0;
+    padding:6px calc(6px + env(safe-area-inset-right)) 6px calc(6px + env(safe-area-inset-left));
+    box-shadow:0 -6px 18px rgba(0,0,0,.16);
+  }
+  body.are-tastatura .toolbar{bottom:var(--tastatura,0px)}
+  body.are-tastatura .editor__foot{display:none}
+  .editor__scroll{padding-bottom:calc(96px + var(--tastatura,0px))}
+
+  /* „fixează” și „favorită” trec în meniul ⋮: bara de sus rămâne respirabilă */
+  #pinBtn,#favBtn{display:none}
+
+  /* antet mai strâns — mai mult loc pentru notițe */
+  .list-head{padding:var(--sp-3) var(--sp-3) 6px}
+  .list-sub{padding:2px var(--sp-3) var(--sp-2)}
+  /* loc sub ultima notiță, ca butonul plutitor să nu o acopere */
+  .notes{padding-bottom:calc(92px + env(safe-area-inset-bottom))}
+
   /* ținte de atingere de minim 44px pe ecrane mici */
   .icon-btn{width:44px;height:44px}
   .icon-btn--sm{width:34px;height:34px}

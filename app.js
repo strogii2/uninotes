@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 4;            // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 5;            // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -412,7 +412,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   /* ==========================================================
      TOAST / CONFIRM
      ========================================================== */
-  function toast(msg, kind, action) {
+  function toast(msg, kind, action, durata) {
     const el = document.createElement('div');
     el.className = 'toast' + (kind ? ' toast--' + kind : '');
     const icon = kind === 'err' ? 'i-x' : 'i-check';
@@ -424,7 +424,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       el.appendChild(b);
     }
     $('#toasts').appendChild(el);
-    let timer = setTimeout(dismiss, action ? 6000 : 2600);
+    let timer = setTimeout(dismiss, durata || (action ? 6000 : 2600));
     function dismiss() {
       clearTimeout(timer);
       if (!el.isConnected) return;
@@ -600,8 +600,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   // pointer events, ca gestul să meargă și pe dispozitivele fără touch events.
   const ARE_TOUCH = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
-  function pragStergere(card) {
-    return Math.min(130, Math.max(70, card.offsetWidth * 0.38));
+  function pragActiune(card) {
+    return Math.min(130, Math.max(70, card.offsetWidth * 0.34));
   }
 
   function pictFavorita(card, note) {
@@ -633,6 +633,16 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     setTimeout(() => deleteNote(note), REDUS ? 0 : 300);
   }
 
+  /** Readuce notița la loc, cu un mic arc — după ce a fost trasă spre favorite. */
+  function revinoCuArc(card, row) {
+    card.style.transition = 'transform .34s ' + 'cubic-bezier(.34,1.4,.64,1)';
+    card.style.transform = '';
+    setTimeout(() => {
+      card.style.transition = '';
+      row.classList.remove('is-swiping', 'is-armed', 'is-right', 'is-left');
+    }, REDUS ? 0 : 340);
+  }
+
   function attachGestures(card, row, note) {
     let x0 = 0, y0 = 0, dx = 0;
     let apasat = false, esteTragere = false, blocat = false;
@@ -642,7 +652,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     const revino = () => {
       card.style.transition = '';
       card.style.transform = '';
-      row.classList.remove('is-swiping', 'is-armed');
+      row.classList.remove('is-swiping', 'is-armed', 'is-right', 'is-left');
     };
 
     /* ---- miezul gestului, folosit și de deget, și de mouse ---- */
@@ -675,11 +685,14 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         row.classList.add('is-swiping');
       }
 
-      dx = Math.max(0, ddx);                        // doar spre dreapta
-      const prag = pragStergere(card);
-      const tras = dx > prag ? prag + (dx - prag) * 0.3 : dx;   // rezistență după prag
-      card.style.transform = 'translateX(' + tras + 'px)';
-      row.classList.toggle('is-armed', dx >= prag);
+      dx = ddx;                                     // dreapta = favorită, stânga = ștergere
+      row.classList.toggle('is-right', dx > 0);
+      row.classList.toggle('is-left', dx < 0);
+      const prag = pragActiune(card);
+      const marime = Math.abs(dx);
+      const tras = marime > prag ? prag + (marime - prag) * 0.3 : marime;   // rezistență după prag
+      card.style.transform = 'translateX(' + (dx < 0 ? -tras : tras) + 'px)';
+      row.classList.toggle('is-armed', marime >= prag);
       return true;
     }
 
@@ -691,9 +704,15 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       apasat = false; esteTragere = false;
       card.style.transition = '';
 
-      if (eraTragere && distanta >= pragStergere(card)) {
+      if (eraTragere && Math.abs(distanta) >= pragActiune(card)) {
         blocat = true;
-        stergeCuAnimatie(note, row);
+        if (distanta < 0) {                         // spre stânga: ștergem
+          stergeCuAnimatie(note, row);
+        } else {                                    // spre dreapta: favorită
+          comutaFavorita(note, card);
+          revinoCuArc(card, row);
+          setTimeout(() => { renderList(); renderSidebar(); }, 380);
+        }
         return;
       }
       if (eraTragere) blocat = true;                // a tras, dar prea puțin: nu deschidem
@@ -822,9 +841,13 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       const row = document.createElement('div');
       row.className = 'note-row';
       row.setAttribute('role', 'listitem');
+      // două fundaluri: cel galben apare când tragi spre dreapta (favorită),
+      // cel roșu când tragi spre stânga (ștergere)
       row.innerHTML =
-        '<div class="note-row__bg" aria-hidden="true">' +
-        '<svg class="ic"><use href="#i-trash"></use></svg><span>Șterge</span></div>';
+        '<div class="note-row__bg note-row__bg--fav" aria-hidden="true">' +
+          '<svg class="ic"><use href="#i-star"></use></svg><span>Favorită</span></div>' +
+        '<div class="note-row__bg note-row__bg--del" aria-hidden="true">' +
+          '<span>Șterge</span><svg class="ic"><use href="#i-trash"></use></svg></div>';
 
       const card = document.createElement('div');
       card.className = 'note-card' + (n.id === ui.activeId ? ' is-active' : '');
@@ -851,9 +874,9 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
             (n.tags.length > 1 ? ' +' + (n.tags.length - 1) : '') + '</span>' : '') +
         '</div>' +
         '<div class="note-card__act">' +
-          '<button class="mini" data-act="fav" title="Favorită (sau ține apăsat pe notiță)" ' +
+          '<button class="mini" data-act="fav" title="Favorită (sau trage notița spre dreapta)" ' +
             'aria-label="Adaugă la favorite"><svg class="ic"><use href="#i-star"></use></svg></button>' +
-          '<button class="mini mini--danger" data-act="del" title="Șterge (sau trage notița spre dreapta)" ' +
+          '<button class="mini mini--danger" data-act="del" title="Șterge (sau trage notița spre stânga)" ' +
             'aria-label="Șterge notița"><svg class="ic"><use href="#i-trash"></use></svg></button>' +
         '</div>';
 
@@ -969,6 +992,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     $('#favBtn').setAttribute('aria-pressed', String(!!note.favorite));
     $('#pinBtn').setAttribute('aria-pressed', String(!!note.pinned));
     $('#archLabel').textContent = note.archived ? 'Scoate din arhivă' : 'Arhivează';
+    $('#favMenuLabel').textContent = note.favorite ? 'Scoate de la favorite' : 'Adaugă la favorite';
+    $('#pinMenuLabel').textContent = note.pinned ? 'Nu mai fixa sus' : 'Fixează sus';
     setPreview(ui.preview);
   }
 
@@ -1300,7 +1325,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   function bind() {
     $('#newNoteBtn').addEventListener('click', newNote);
     $('#emptyNewBtn').addEventListener('click', newNote);
-    $('#newNoteBtnSm').addEventListener('click', newNote);
+    $('#fabNew').addEventListener('click', newNote);
     $('#menuBtn').addEventListener('click', openNav);
     $('#sidebarClose').addEventListener('click', closeNav);
     $('#scrim').addEventListener('click', closeNav);
@@ -1443,6 +1468,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       closeMenu();
       const n = activeNote(); if (!n) return;
       switch (b.dataset.act) {
+        case 'fav': $('#favBtn').click(); break;      // pe telefon butoanele stau în meniu
+        case 'pin': $('#pinBtn').click(); break;
         case 'export': exportNote(n); break;
         case 'print': printNote(); break;
         case 'duplicate': {
@@ -1619,6 +1646,40 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   }
 
   /* ==========================================================
+     TELEFON: TASTATURĂ ȘI SFATURI
+     ========================================================== */
+
+  /**
+   * Când tastatura urcă peste pagină, elementele fixate rămân sub ea:
+   * poziția „fixed” se raportează la fereastra întreagă, nu la partea vizibilă.
+   * Măsurăm cât acoperă tastatura și punem valoarea într-o variabilă CSS.
+   */
+  function urmaresteTastatura() {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const aplica = () => {
+      const acoperit = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      document.documentElement.style.setProperty('--tastatura', Math.round(acoperit) + 'px');
+      document.body.classList.toggle('are-tastatura', acoperit > 90);
+    };
+    vv.addEventListener('resize', aplica);
+    vv.addEventListener('scroll', aplica);
+    aplica();
+  }
+
+  const CHEIE_SFAT_GESTURI = 'uninotes.sfat-gesturi';
+
+  function sfatGesturi() {
+    if (DESKTOP) return;
+    if (!window.matchMedia('(hover: none)').matches) return;   // doar pe ecrane tactile
+    try { if (localStorage.getItem(CHEIE_SFAT_GESTURI)) return; } catch (e) { return; }
+    setTimeout(() => {
+      toast('Trage o notiță spre dreapta pentru favorite, spre stânga ca s-o ștergi', 'ok', null, 6000);
+      try { localStorage.setItem(CHEIE_SFAT_GESTURI, '1'); } catch (e) { /* mod privat */ }
+    }, 1400);
+  }
+
+  /* ==========================================================
      INSTALARE PE TELEFON
      ========================================================== */
   const HINT_KEY = 'uninotes.hint-instalare';
@@ -1665,6 +1726,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     db = await loadData();
     init();
     setupInstall();
+    urmaresteTastatura();
+    sfatGesturi();
   }
 
   document.addEventListener('DOMContentLoaded', boot);

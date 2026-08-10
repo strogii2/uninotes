@@ -19,6 +19,11 @@ principal:
 După instalare capătă iconiță proprie, se deschide pe tot ecranul fără bara de browser și
 **merge fără internet** — tot ce îi trebuie e ținut în telefon de la prima deschidere.
 
+Interfața e gândită pentru o singură mână: butonul rotund de „notiță nouă" stă jos-dreapta,
+bara de formatare se lipește deasupra tastaturii cât scrii, iar acțiunile mai rare
+(fixare, favorite, export, printare) sunt strânse în meniul `⋮`. În josul barei laterale
+scrie versiunea instalată — util ca să știi dacă telefonul a preluat o actualizare.
+
 Notițele de pe telefon sunt separate de cele de pe calculator; nu se sincronizează între
 ele. Ca să le muți dintr-o parte în alta, folosește **Backup** (export `.json`) pe un
 dispozitiv și **Import** pe celălalt.
@@ -65,13 +70,15 @@ Dacă fișierul ajunge totuși corupt, aplicația îl pune deoparte ca `notite.j
 - **Căutare** în titlu, conținut, etichete și denumirea materiei, cu evidențierea potrivirilor.
 - **Editor Markdown** cu previzualizare: titluri, îngroșat/înclinat, liste, liste de bifat,
   citate, cod, tabele, linkuri. Listele se continuă automat la Enter.
-- **Ștergere prin tragere** — trage notița spre dreapta în listă: apare fundalul roșu,
-  notița alunecă afară și rândul se strânge. Ai **Anulează** în mesajul care apare, dacă
-  te-ai răzgândit. Pe telefon gestul folosește evenimentele de atingere (nu pointer
-  events), fiindcă iOS decide devreme că mișcarea e derulare și retrage pointerul.
-- **Favorite prin apăsare lungă** — ține degetul pe o notiță o jumătate de secundă.
-  Pe calculator, ține apăsat butonul mouse-ului sau folosește butoanele care apar pe
-  notiță când treci cu mouse-ul peste ea.
+- **Gesturi pe notițe, în listă:**
+  - **spre dreapta → favorită** (fundal galben cu stea, notița revine cu un arc);
+  - **spre stânga → ștergere** (fundal roșu, notița alunecă afară și rândul se strânge),
+    cu **Anulează** în mesajul care apare;
+  - **apăsare lungă → favorită**, dacă preferi așa.
+
+  Pe calculator ai și butoane care apar pe notiță când treci cu mouse-ul peste ea.
+  Pe telefon gestul folosește evenimentele de atingere (nu pointer events), fiindcă iOS
+  decide devreme că mișcarea e derulare și retrage pointerul.
 - **Ziua și ora, în timp real**, în bara de jos a editorului, cât scrii. Butonul cu ceas
   din bara de formatare inserează data și ora în text, unde ai cursorul.
 - **Fixare** (notița stă sus) și **favorite**.

@@ -166,9 +166,6 @@
         <input type="search" id="searchInput" placeholder="Caută în notițe…" aria-label="Caută în notițe" autocomplete="off">
         <kbd class="search__kbd">Ctrl K</kbd>
       </div>
-      <button class="icon-btn icon-btn--accent only-mobile" id="newNoteBtnSm" aria-label="Notiță nouă">
-        <svg class="ic"><use href="#i-plus"></use></svg>
-      </button>
     </header>
 
     <div class="list-sub">
@@ -231,6 +228,8 @@
             <svg class="ic"><use href="#i-dots"></use></svg>
           </button>
           <div class="menu" id="moreMenu" hidden role="menu">
+            <button role="menuitem" data-act="fav" class="doar-telefon"><svg class="ic"><use href="#i-star"></use></svg> <span id="favMenuLabel">Adaugă la favorite</span></button>
+            <button role="menuitem" data-act="pin" class="doar-telefon"><svg class="ic"><use href="#i-pin"></use></svg> <span id="pinMenuLabel">Fixează sus</span></button>
             <button role="menuitem" data-act="export"><svg class="ic"><use href="#i-download"></use></svg> Exportă ca .md</button>
             <button role="menuitem" data-act="print"><svg class="ic"><use href="#i-print"></use></svg> Printează / salvează PDF</button>
             <button role="menuitem" data-act="duplicate"><svg class="ic"><use href="#i-layers"></use></svg> Duplică</button>
@@ -286,6 +285,11 @@
       </footer>
     </div>
   </main>
+
+  <!-- acțiunea principală, la îndemâna degetului mare -->
+  <button class="fab" id="fabNew" aria-label="Notiță nouă" title="Notiță nouă">
+    <svg class="ic"><use href="#i-plus"></use></svg>
+  </button>
 </div>
 
 <!-- ============ MODALE ============ -->
