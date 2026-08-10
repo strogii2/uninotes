@@ -181,7 +181,24 @@ h1,h2,h3,p{margin:0}
   transition:background var(--t) var(--ease),color var(--t) var(--ease);
 }
 .subject:hover{background:var(--muted);color:var(--fg)}
-.subject.is-active{background:var(--muted);color:var(--fg);font-weight:600}
+/* cu mai multe materii alese deodată, doar fundalul nu se citește destul de
+   clar; dunga din stânga arată dintr-o privire care sunt în filtru */
+.subject.is-active{
+  background:var(--muted);color:var(--fg);font-weight:600;
+  box-shadow:inset 3px 0 0 var(--primary);
+}
+.subject-alese{
+  display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2);
+  margin:var(--sp-1) var(--sp-3) 0;padding-top:var(--sp-2);
+  border-top:1px solid var(--border);
+  font-size:12.5px;color:var(--fg-muted);
+}
+.subject-alese__btn{
+  font:inherit;font-weight:600;color:var(--primary);
+  padding:5px 8px;border-radius:var(--r-sm);min-height:32px;
+  transition:background var(--t) var(--ease);
+}
+.subject-alese__btn:hover{background:color-mix(in srgb,var(--primary) 12%,transparent)}
 .subject__name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .subject__edit{opacity:0;color:var(--fg-muted);padding:2px;border-radius:6px;transition:opacity var(--t) var(--ease)}
 .subject:hover .subject__edit,.subject:focus-within .subject__edit{opacity:1}

@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 12;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 13;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -43,7 +43,8 @@
      ========================================================== */
   let db = null;              // se încarcă la pornire (vezi boot())
   let ui = {
-    filter: { type: 'all', subjectId: null, tag: null },
+    // se pot alege mai multe materii deodată; lista goală înseamnă „toate”
+    filter: { type: 'all', subjectIds: [], tag: null },
     query: '',
     sort: 'updated',
     activeId: null,
@@ -1095,7 +1096,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       else if (n.archived) return false;
 
       if (ui.filter.type === 'fav' && !n.favorite) return false;
-      if (ui.filter.type === 'subject' && n.subjectId !== ui.filter.subjectId) return false;
+      if (ui.filter.type === 'subject' && !ui.filter.subjectIds.includes(n.subjectId)) return false;
       if (ui.filter.tag && !(n.tags || []).includes(ui.filter.tag)) return false;
 
       if (q) {
@@ -1151,9 +1152,12 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     db.subjects.forEach(s => {
       const count = live.filter(n => n.subjectId === s.id).length;
       const btn = document.createElement('button');
-      btn.className = 'subject' + (ui.filter.type === 'subject' && ui.filter.subjectId === s.id ? ' is-active' : '');
+      const aleasa = ui.filter.type === 'subject' && ui.filter.subjectIds.includes(s.id);
+      btn.className = 'subject' + (aleasa ? ' is-active' : '');
       btn.setAttribute('role', 'listitem');
-      btn.title = s.prof ? s.name + ' — ' + s.prof : s.name;
+      btn.setAttribute('aria-pressed', String(aleasa));
+      btn.title = (s.prof ? s.name + ' — ' + s.prof : s.name) +
+                  (aleasa ? ' · apasă ca s-o scoți din filtru' : ' · apasă ca s-o adaugi la filtru');
       btn.innerHTML =
         '<span class="dot" style="background:' + s.color + ';color:' + s.color + '"></span>' +
         '<span class="subject__name"></span>' +
@@ -1163,13 +1167,42 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       $('.subject__name', btn).textContent = s.name;
       btn.addEventListener('click', e => {
         if (e.target.closest('.subject__edit')) { openSubjectModal(s); return; }
-        setFilter('subject', s.id);
+        comutaMaterie(s.id);
       });
       $('.subject__edit', btn).addEventListener('keydown', e => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openSubjectModal(s); }
       });
       wrap.appendChild(btn);
     });
+
+    // cât timp filtrul ține mai multe materii, trebuie să se vadă limpede
+    // câte sunt și cum se renunță la ele
+    const alese = ui.filter.type === 'subject' ? ui.filter.subjectIds : [];
+    if (alese.length) {
+      const bara = document.createElement('div');
+      bara.className = 'subject-alese';
+      const text = document.createElement('span');
+      text.textContent = alese.length === 1
+        ? 'o materie aleasă' : alese.length + ' materii alese';
+      bara.appendChild(text);
+
+      // pe telefon sertarul acoperă lista, deci are rost un drum scurt înapoi
+      if ($('#app').classList.contains('nav-open')) {
+        const vezi = document.createElement('button');
+        vezi.type = 'button';
+        vezi.className = 'subject-alese__btn';
+        vezi.textContent = 'Vezi notițele';
+        vezi.addEventListener('click', closeNav);
+        bara.appendChild(vezi);
+      }
+      const renunta = document.createElement('button');
+      renunta.type = 'button';
+      renunta.className = 'subject-alese__btn';
+      renunta.textContent = 'Renunță';
+      renunta.addEventListener('click', () => setFilter('all'));
+      bara.appendChild(renunta);
+      wrap.appendChild(bara);
+    }
 
     const tags = new Map();
     live.forEach(n => (n.tags || []).forEach(t => tags.set(t, (tags.get(t) || 0) + 1)));
@@ -1431,8 +1464,15 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     const titles = { all: 'Toate notițele', fav: 'Favorite', archive: 'Arhivă' };
     let title = titles[ui.filter.type] || 'Notițe';
     if (ui.filter.type === 'subject') {
-      const s = db.subjects.find(x => x.id === ui.filter.subjectId);
-      title = s ? s.name : 'Materie';
+      const nume = ui.filter.subjectIds
+        .map(id => (db.subjects.find(x => x.id === id) || {}).name)
+        .filter(Boolean);
+      // două nume încap; mai multe ar rupe capul listei, așa că le numărăm
+      title = nume.length <= 2 ? nume.join(' · ') : nume.length + ' materii';
+      if (!nume.length) title = 'Materie';
+      $('#listTitle').title = nume.join(', ');
+    } else {
+      $('#listTitle').title = '';
     }
     if (ui.filter.tag) title += ' · #' + ui.filter.tag;
     $('#listTitle').textContent = title;
@@ -1682,7 +1722,10 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   function newNote() {
     const note = {
       id: uid(),
-      subjectId: ui.filter.type === 'subject' ? ui.filter.subjectId : null,
+      // notița nouă primește materia doar dacă filtrul arată exact una:
+      // cu mai multe alese n-am de unde ști la care o vrei
+      subjectId: ui.filter.type === 'subject' && ui.filter.subjectIds.length === 1
+        ? ui.filter.subjectIds[0] : null,
       title: '', content: '',
       tags: ui.filter.tag ? [ui.filter.tag] : [],
       pinned: false, favorite: false, archived: false,
@@ -1728,12 +1771,29 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     });
   }
 
-  function setFilter(type, subjectId) {
+  function setFilter(type, subjectIds) {
     ui.filter.type = type;
-    ui.filter.subjectId = subjectId || null;
+    ui.filter.subjectIds = subjectIds ? subjectIds.slice() : [];
     renderSidebar();
     renderList();
     closeNav();
+  }
+
+  /**
+   * Materiile se adună: apeși pe încă una și notițele ei se alătură listei,
+   * apeși din nou pe ea și iese. Fără nicio materie aleasă vezi tot.
+   *
+   * Aici nu închidem sertarul de pe telefon, cum face setFilter: altfel n-ai
+   * apuca să alegi a doua materie.
+   */
+  function comutaMaterie(id) {
+    const alese = ui.filter.subjectIds;
+    const i = alese.indexOf(id);
+    if (i >= 0) alese.splice(i, 1);
+    else alese.push(id);
+    ui.filter.type = alese.length ? 'subject' : 'all';
+    renderSidebar();
+    renderList();
   }
 
   function showPane(p) {
@@ -2230,7 +2290,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     db.notes.unshift(nota);
     ui.activeId = nota.id;
     ui.preview = false;
-    ui.filter = { type: 'all', subjectId: null, tag: null };
+    ui.filter = { type: 'all', subjectIds: [], tag: null };
     persist();
 
     inchideOrar();
@@ -2284,7 +2344,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       note.innerHTML = '<svg class="ic"><use href="#i-book"></use></svg>';
       note.addEventListener('click', () => {
         inchideOrar();
-        setFilter('subject', s.id);
+        setFilter('subject', [s.id]);      // din orar vrei fix materia aia
         showPane('list');
       });
       card.appendChild(note);
@@ -3590,7 +3650,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     if (!curatat) { toast('Datele de pe cont nu se pot citi.', 'err'); return; }
     db = curatat;
     ui.activeId = null;
-    ui.filter = { type: 'all', subjectId: null, tag: null };
+    ui.filter = { type: 'all', subjectIds: [], tag: null };
 
     if (pack.poze && typeof pack.poze === 'object') {
       for (const id of Object.keys(pack.poze)) {
@@ -4141,7 +4201,9 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       if (!ok) return;
       db.subjects = db.subjects.filter(x => x.id !== s.id);
       db.notes.forEach(n => { if (n.subjectId === s.id) n.subjectId = null; });
-      if (ui.filter.subjectId === s.id) ui.filter = { type: 'all', subjectId: null, tag: null };
+      const ramase = ui.filter.subjectIds.filter(x => x !== s.id);
+      ui.filter.subjectIds = ramase;
+      if (ui.filter.type === 'subject' && !ramase.length) ui.filter.type = 'all';
       editingSubject = null;
       $('#subjectModal').close();
       persist(); renderSidebar(); renderList();
