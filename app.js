@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 9;            // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 10;            // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -3402,29 +3402,77 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   /* ==========================================================
      EVENIMENTE
      ========================================================== */
+  /**
+   * Leagă un eveniment fără să dărâme restul dacă elementul lipsește.
+   *
+   * Înainte, bind() era un lanț de $('#x').addEventListener(...): dacă un
+   * singur element lipsea — de pildă fiindcă telefonul apucase să ia app.js
+   * nou peste un index.html vechi — funcția arunca acolo și TOATE butoanele
+   * legate mai jos rămâneau moarte. Așa se ajungea la „unele merg, restul nu".
+   */
+  const elementeLipsa = [];
+  function pe(sel, ev, fn, opt) {
+    const el = $(sel);
+    if (!el) { elementeLipsa.push(sel); return null; }
+    el.addEventListener(ev, fn, opt);
+    return el;
+  }
+
+  /**
+   * Dacă lipsesc elemente, fișierele nu sunt din aceeași versiune. Curățăm
+   * cache-ul și reîncărcăm o singură dată — altfel utilizatorul rămâne cu o
+   * aplicație pe jumătate funcțională și fără nicio explicație.
+   */
+  const CHEIE_REPARAT = 'uninotes.reparat';
+  async function reparaVersiunea() {
+    if (!elementeLipsa.length) { try { sessionStorage.removeItem(CHEIE_REPARAT); } catch (e) {} return; }
+    console.warn('[UniNotes] elemente lipsă din pagină:', elementeLipsa.join(', '));
+
+    let incercat = false;
+    try { incercat = sessionStorage.getItem(CHEIE_REPARAT) === '1'; } catch (e) { incercat = true; }
+    if (incercat) {                       // am încercat deja: nu intrăm în buclă
+      toast('Aplicația nu s-a actualizat complet. Închide-o de tot și deschide-o din nou.',
+            'err', null, 9000);
+      return;
+    }
+    try { sessionStorage.setItem(CHEIE_REPARAT, '1'); } catch (e) { /* mod privat */ }
+
+    toast('Actualizez aplicația…', 'ok', null, 4000);
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const r of regs) await r.unregister();
+      }
+      if (window.caches) {
+        for (const k of await caches.keys()) await caches.delete(k);
+      }
+    } catch (e) { /* mergem mai departe oricum */ }
+    setTimeout(() => location.reload(), 600);
+  }
+
   function bind() {
-    $('#newNoteBtn').addEventListener('click', newNote);
-    $('#emptyNewBtn').addEventListener('click', newNote);
-    $('#fabNew').addEventListener('click', newNote);
-    $('#menuBtn').addEventListener('click', openNav);
-    $('#sidebarClose').addEventListener('click', closeNav);
-    $('#scrim').addEventListener('click', closeNav);
-    $('#backBtn').addEventListener('click', () => showPane('list'));
+    pe('#newNoteBtn', 'click', newNote);
+    pe('#emptyNewBtn', 'click', newNote);
+    pe('#fabNew', 'click', newNote);
+    pe('#menuBtn', 'click', openNav);
+    pe('#sidebarClose', 'click', closeNav);
+    pe('#scrim', 'click', closeNav);
+    pe('#backBtn', 'click', () => showPane('list'));
 
     $$('.nav__item[data-filter]').forEach(b =>
       b.addEventListener('click', () => setFilter(b.dataset.filter)));
 
-    $('#addSubjectBtn').addEventListener('click', () => openSubjectModal(null));
+    pe('#addSubjectBtn', 'click', () => openSubjectModal(null));
 
     /* ---------- orar ---------- */
-    $('#orarBtn').addEventListener('click', deschideOrar);
-    $('#orarClose').addEventListener('click', inchideOrar);
-    $('#orarClose2').addEventListener('click', inchideOrar);
-    $('#orarDlg').addEventListener('close', () => { clearInterval(orarTimer); orarTimer = null; });
-    $('#orarAddBtn').addEventListener('click', () => deschideOra(null));
-    $('#orarKeyBtn').addEventListener('click', deschideCheia);
+    pe('#orarBtn', 'click', deschideOrar);
+    pe('#orarClose', 'click', inchideOrar);
+    pe('#orarClose2', 'click', inchideOrar);
+    pe('#orarDlg', 'close', () => { clearInterval(orarTimer); orarTimer = null; });
+    pe('#orarAddBtn', 'click', () => deschideOra(null));
+    pe('#orarKeyBtn', 'click', deschideCheia);
 
-    $('#orarParitate').addEventListener('change', e => {
+    pe('#orarParitate', 'change', e => {
       const tip = e.target.value;
       if (tip) orar().paritate = { deLa: luniDin(new Date()), tip: tip };
       else delete orar().paritate;
@@ -3434,18 +3482,18 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     });
 
     /* ---------- repetiție ---------- */
-    $('#repetitieBtn').addEventListener('click', deschideRepetitia);
-    $('#repetitieClose').addEventListener('click', () => $('#repetitieDlg').close());
-    $('#repetitieClose2').addEventListener('click', () => $('#repetitieDlg').close());
-    $('#repetitieDlg').addEventListener('close', () => { sesiune = null; renderSidebar(); });
+    pe('#repetitieBtn', 'click', deschideRepetitia);
+    pe('#repetitieClose', 'click', () => $('#repetitieDlg').close());
+    pe('#repetitieClose2', 'click', () => $('#repetitieDlg').close());
+    pe('#repetitieDlg', 'close', () => { sesiune = null; renderSidebar(); });
 
     /* ---------- termene ---------- */
-    $('#termeneBtn').addEventListener('click', deschideTermene);
-    $('#termeneClose').addEventListener('click', () => $('#termeneDlg').close());
-    $('#termeneClose2').addEventListener('click', () => $('#termeneDlg').close());
-    $('#termenAddBtn').addEventListener('click', () => deschideTermen(null));
+    pe('#termeneBtn', 'click', deschideTermene);
+    pe('#termeneClose', 'click', () => $('#termeneDlg').close());
+    pe('#termeneClose2', 'click', () => $('#termeneDlg').close());
+    pe('#termenAddBtn', 'click', () => deschideTermen(null));
 
-    $('#termenForm').addEventListener('submit', e => {
+    pe('#termenForm', 'submit', e => {
       const titlu = $('#termenTitlu').value.trim();
       const data = $('#termenData').value;
       if (!titlu || !data) { e.preventDefault(); return; }
@@ -3465,7 +3513,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       salveazaTermene();
     });
 
-    $('#termenDelete').addEventListener('click', async () => {
+    pe('#termenDelete', 'click', async () => {
       if (!termenEditat) return;
       const t = termenEditat;
       const ok = await confirmDialog('Ștergi termenul?', '„' + t.titlu + '” va fi șters.', 'Șterge');
@@ -3480,21 +3528,21 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       });
     });
 
-    $('#aziCard').addEventListener('click', e => {
+    pe('#aziCard', 'click', e => {
       const b = e.target.closest('.azi__nota');
       if (!b) return;
       const o = orar().entries.filter(x => x.id === b.dataset.ora)[0];
       if (o) notitaDinOra(o);
     });
 
-    $('#ziTabs').addEventListener('click', e => {
+    pe('#ziTabs', 'click', e => {
       const b = e.target.closest('.zi-tab');
       if (!b) return;
       ziSelectata = +b.dataset.zi;
       renderOrar();
     });
 
-    $('#orarClearBtn').addEventListener('click', async () => {
+    pe('#orarClearBtn', 'click', async () => {
       if (!orar().entries.length) { toast('Orarul e deja gol.', 'ok'); return; }
       const vechi = orar().entries.slice();
       const ok = await confirmDialog('Golești orarul?',
@@ -3509,19 +3557,19 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     });
 
     // merge și fără cheie — atunci citirea se face pe dispozitiv
-    $('#orarScanBtn').addEventListener('click', () => $('#orarFoto').click());
-    $('#orarFoto').addEventListener('change', async e => {
+    pe('#orarScanBtn', 'click', () => $('#orarFoto').click());
+    pe('#orarFoto', 'change', async e => {
       const f = e.target.files[0];
       e.target.value = '';                       // aceeași poză poate fi aleasă din nou
       if (f) await scaneazaPoza(f);
     });
-    $('#scanRenunta').addEventListener('click', () => {
+    pe('#scanRenunta', 'click', () => {
       if (scanCtrl) scanCtrl.abort();
       if (ocrWorker) { const w = ocrWorker; ocrWorker = null; try { w.terminate(); } catch (e) { /* deja oprit */ } }
       if ($('#scanBusy').open) $('#scanBusy').close();
     });
 
-    $('#oraForm').addEventListener('submit', e => {
+    pe('#oraForm', 'submit', e => {
       const materie = $('#oraMaterie').value.trim();
       const start = $('#oraStart').value, end = $('#oraEnd').value;
       if (!materie || !start || !end) { e.preventDefault(); return; }
@@ -3552,7 +3600,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       salveazaOrarul();
     });
 
-    $('#oraDelete').addEventListener('click', async () => {
+    pe('#oraDelete', 'click', async () => {
       if (!oraEditata) return;
       const o = oraEditata;
       const ok = await confirmDialog('Ștergi ora?',
@@ -3569,13 +3617,13 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       });
     });
 
-    $('#scanAdauga').addEventListener('click', () => importaScanarea(false));
-    $('#scanInlocuieste').addEventListener('click', () => importaScanarea(true));
-    $('#scanModal').addEventListener('close', () => { scanRezultat = null; });
+    pe('#scanAdauga', 'click', () => importaScanarea(false));
+    pe('#scanInlocuieste', 'click', () => importaScanarea(true));
+    pe('#scanModal', 'close', () => { scanRezultat = null; });
 
-    $('#cheieInput').addEventListener('input', aratăFurnizorul);
+    pe('#cheieInput', 'input', aratăFurnizorul);
 
-    $('#cheieForm').addEventListener('submit', e => {
+    pe('#cheieForm', 'submit', e => {
       const v = $('#cheieInput').value.trim();
       const f = furnizorPentru(v);
       if (v && !f) {                       // mai bine refuzăm acum decât să eșueze la scanare
@@ -3590,7 +3638,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
                 : 'Cheia a fost ștearsă', 'ok');
       }
     });
-    $('#cheieSterge').addEventListener('click', () => {
+    pe('#cheieSterge', 'click', () => {
       salveazaCheia('');
       $('#cheieInput').value = '';
       $('#cheieSterge').hidden = true;
@@ -3600,29 +3648,29 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     });
 
     let searchTimer;
-    $('#searchInput').addEventListener('input', e => {
+    pe('#searchInput', 'input', e => {
       clearTimeout(searchTimer);
       const v = e.target.value;
       searchTimer = setTimeout(() => { ui.query = v; renderList(); }, 140);
     });
 
-    $('#sortSelect').addEventListener('change', e => { ui.sort = e.target.value; renderList(); });
+    pe('#sortSelect', 'change', e => { ui.sort = e.target.value; renderList(); });
 
     // --- editor ---
-    $('#titleInput').addEventListener('input', e => {
+    pe('#titleInput', 'input', e => {
       const n = activeNote(); if (!n) return;
       n.title = e.target.value;
       touch(n);
     });
 
-    $('#contentInput').addEventListener('input', e => {
+    pe('#contentInput', 'input', e => {
       const n = activeNote(); if (!n) return;
       n.content = e.target.value;
       touch(n);
     });
 
     // continuare automată a listelor la Enter
-    $('#contentInput').addEventListener('keydown', e => {
+    pe('#contentInput', 'keydown', e => {
       if (e.key !== 'Enter' || e.shiftKey) return;
       const ta = e.target, pos = ta.selectionStart;
       if (pos !== ta.selectionEnd) return;
@@ -3642,7 +3690,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       const n = activeNote(); if (n) { n.content = ta.value; touch(n); }
     });
 
-    $('#subjectSelect').addEventListener('change', e => {
+    pe('#subjectSelect', 'change', e => {
       const n = activeNote(); if (!n) return;
       n.subjectId = e.target.value || null;
       const s = subjectOf(n);
@@ -3650,7 +3698,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       touch(n);
     });
 
-    $('#tagInput').addEventListener('keydown', e => {
+    pe('#tagInput', 'keydown', e => {
       const n = activeNote(); if (!n) return;
       if (e.key === 'Enter' || e.key === ',') {
         e.preventDefault();
@@ -3661,31 +3709,31 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       }
     });
 
-    $('#tagAddBtn').addEventListener('click', () => {
+    pe('#tagAddBtn', 'click', () => {
       const n = activeNote(); if (!n) return;
       const camp = $('#tagInput');
       if (camp.value.trim()) { adaugaEticheta(n, camp.value); camp.value = ''; }
       camp.focus();                       // gol: doar ducem cursorul în câmp
     });
 
-    $('#favBtn').addEventListener('click', () => {
+    pe('#favBtn', 'click', () => {
       const n = activeNote(); if (!n) return;
       n.favorite = !n.favorite;
       $('#favBtn').setAttribute('aria-pressed', String(n.favorite));
       touch(n); renderList(); renderSidebar();
     });
 
-    $('#pinBtn').addEventListener('click', () => {
+    pe('#pinBtn', 'click', () => {
       const n = activeNote(); if (!n) return;
       n.pinned = !n.pinned;
       $('#pinBtn').setAttribute('aria-pressed', String(n.pinned));
       touch(n); renderList();
     });
 
-    $('#previewBtn').addEventListener('click', () => setPreview(!ui.preview));
-    $('#printBtn').addEventListener('click', printNote);
+    pe('#previewBtn', 'click', () => setPreview(!ui.preview));
+    pe('#printBtn', 'click', printNote);
 
-    $('#previewPane').addEventListener('change', e => {
+    pe('#previewPane', 'change', e => {
       const cb = e.target.closest('input[type="checkbox"][data-task]');
       const n = activeNote();
       if (!cb || !n) return;
@@ -3710,7 +3758,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       touch(n);
     });
 
-    $('#toolbar').addEventListener('click', e => {
+    pe('#toolbar', 'click', e => {
       const b = e.target.closest('.tool');
       if (!b) return;
       if (b.id === 'pozaBtn') {                 // butonul ăsta deschide un fișier, nu scrie Markdown
@@ -3722,28 +3770,28 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     });
 
     /* ---------- desen ---------- */
-    $('#desenInchide').addEventListener('click', () => $('#desenDlg').close());
-    $('#desenInchide2').addEventListener('click', () => $('#desenDlg').close());
-    $('#desenDlg').addEventListener('close', () => { desen = null; });
-    $('#desenSalveaza').addEventListener('click', salveazaDesenul);
-    $('#desenRadiera').addEventListener('click', () => {
+    pe('#desenInchide', 'click', () => $('#desenDlg').close());
+    pe('#desenInchide2', 'click', () => $('#desenDlg').close());
+    pe('#desenDlg', 'close', () => { desen = null; });
+    pe('#desenSalveaza', 'click', salveazaDesenul);
+    pe('#desenRadiera', 'click', () => {
       if (!desen) return;
       desen.radiera = !desen.radiera;
       randeazaUnelteDesen();
     });
-    $('#desenInapoi').addEventListener('click', () => {
+    pe('#desenInapoi', 'click', () => {
       if (!desen || !desen.linii.length) return;
       desen.linii.pop();
       redeseneaza();
     });
-    $('#desenSterge').addEventListener('click', async () => {
+    pe('#desenSterge', 'click', async () => {
       if (!desen || !desen.linii.length) return;
       const ok = await confirmDialog('Ștergi tot desenul?',
         'Cele ' + desen.linii.length + ' linii vor dispărea.', 'Șterge');
       if (ok && desen) { desen.linii = []; redeseneaza(); }
     });
 
-    $('#pozaInput').addEventListener('change', async e => {
+    pe('#pozaInput', 'change', async e => {
       const f = e.target.files[0];
       e.target.value = '';                      // aceeași poză poate fi aleasă din nou
       if (f) await insereazaPoza(f);
@@ -3800,10 +3848,10 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     });
 
     // --- sidebar footer ---
-    $('#themeBtn').addEventListener('click', () =>
+    pe('#themeBtn', 'click', () =>
       applyTheme(db.settings.theme === 'dark' ? 'light' : 'dark', true));
-    $('#exportAllBtn').addEventListener('click', exportAll);
-    $('#importBtn').addEventListener('click', async () => {
+    pe('#exportAllBtn', 'click', exportAll);
+    pe('#importBtn', 'click', async () => {
       if (api()) {                                    // dialog nativ de deschidere
         const picked = await api().open_file();
         if (picked) importText(picked.content);
@@ -3811,27 +3859,27 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       }
       $('#importInput').click();
     });
-    $('#importInput').addEventListener('change', async e => {
+    pe('#importInput', 'change', async e => {
       const f = e.target.files[0];
       if (f) importText(await f.text());
       e.target.value = '';
     });
-    $('#dataFolderBtn').addEventListener('click', () => {
+    pe('#dataFolderBtn', 'click', () => {
       if (api()) api().open_data_folder();
     });
-    $('#helpBtn').addEventListener('click', () => $('#helpModal').showModal());
+    pe('#helpBtn', 'click', () => $('#helpModal').showModal());
 
-    $('#syncBtn').addEventListener('click', deschideSync);
-    $('#syncTrimite').addEventListener('click', trimiteSync);
-    $('#syncAdu').addEventListener('click', aduSync);
-    $('#syncToken').addEventListener('change', () => { salveazaSetariSync(); starSync(); });
-    $('#syncGist').addEventListener('change', () => { salveazaSetariSync(); starSync(); });
+    pe('#syncBtn', 'click', deschideSync);
+    pe('#syncTrimite', 'click', trimiteSync);
+    pe('#syncAdu', 'click', aduSync);
+    pe('#syncToken', 'change', () => { salveazaSetariSync(); starSync(); });
+    pe('#syncGist', 'change', () => { salveazaSetariSync(); starSync(); });
 
     // --- modale ---
     $$('[data-close]').forEach(b =>
       b.addEventListener('click', () => b.closest('dialog').close()));
 
-    $('#subjectForm').addEventListener('submit', () => {
+    pe('#subjectForm', 'submit', () => {
       const name = $('#subjName').value.trim();
       if (!name) return;
       const prof = $('#subjProf').value.trim();
@@ -3851,7 +3899,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       editingSubject = null;
     });
 
-    $('#subjDelete').addEventListener('click', async () => {
+    pe('#subjDelete', 'click', async () => {
       if (!editingSubject) return;
       const s = editingSubject;
       const used = db.notes.filter(n => n.subjectId === s.id).length;
@@ -3943,6 +3991,9 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     // „acum” / „urmează” din bara laterală trebuie să rămână adevărate
     setInterval(actualizeazaInsigna, 60000);
 
+    // dacă pagina și codul nu sunt din aceeași versiune, ne reparăm singuri
+    reparaVersiunea();
+
     if (api()) {
       const btn = $('#dataFolderBtn');
       btn.hidden = false;
@@ -4022,7 +4073,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     if (iOS && !standalone && !DESKTOP && !respins) {
       const hint = $('#installHint');
       hint.hidden = false;
-      $('#installHintClose').addEventListener('click', () => {
+      pe('#installHintClose', 'click', () => {
         hint.hidden = true;
         try { localStorage.setItem(HINT_KEY, '1'); } catch (e) { /* ignorăm */ }
       });
