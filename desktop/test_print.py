@@ -24,12 +24,24 @@ def opreste_dupa(secunde, mesaj):
     threading.Thread(target=bomba, daemon=True).start()
 
 
+def asteapta_notitele(window, secunde=30):
+    """Varianta compilată pornește mai încet; așteptăm până apar notițele."""
+    limita = time.time() + secunde
+    while time.time() < limita:
+        n = window.evaluate_js("document.querySelectorAll('.note-card').length")
+        if n:
+            return n
+        time.sleep(0.5)
+    return 0
+
+
 def probe(window):
     try:
-        time.sleep(5)
+        time.sleep(3)
         print("BUTON_PRINT=%s" % window.evaluate_js("!!document.querySelector('#printBtn')"), flush=True)
         print("ARE_PRINT=%s" % window.evaluate_js("typeof window.print === 'function'"), flush=True)
 
+        print("NOTITE=%s" % asteapta_notitele(window), flush=True)
         window.evaluate_js("document.querySelectorAll('.note-card')[0].click(); 1")
         time.sleep(0.8)
         lung = window.evaluate_js(
@@ -90,7 +102,7 @@ def run():
         js_api=api, width=1200, height=800,
     )
     api.window = window
-    opreste_dupa(45, "REZULTAT=TIMP_EXPIRAT")
+    opreste_dupa(90, "REZULTAT=TIMP_EXPIRAT")
     webview.start(probe, window, gui="edgechromium", private_mode=False,
                   storage_path=str(app.DATA_DIR / ".fereastra-test"))
 
