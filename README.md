@@ -58,12 +58,17 @@ Dacă fișierul ajunge totuși corupt, aplicația îl pune deoparte ca `notite.j
 
 - **Organizare pe materii** — fiecare materie are culoare proprie și, opțional, numele profesorului.
 - **Etichete** libere (`#curs`, `#laborator`, `#examen`) cu filtrare rapidă din bara laterală.
+  Le adaugi scriind în câmpul de sub titlu (Enter sau butonul „+"), cu sugestii din cele
+  folosite deja; le scoți din notiță cu „×" de pe etichetă. Din bara laterală, „×" de pe o
+  etichetă o șterge din **toate** notițele, după o confirmare care îți spune câte sunt
+  afectate — și se poate anula.
 - **Căutare** în titlu, conținut, etichete și denumirea materiei, cu evidențierea potrivirilor.
 - **Editor Markdown** cu previzualizare: titluri, îngroșat/înclinat, liste, liste de bifat,
   citate, cod, tabele, linkuri. Listele se continuă automat la Enter.
 - **Ștergere prin tragere** — trage notița spre dreapta în listă: apare fundalul roșu,
   notița alunecă afară și rândul se strânge. Ai **Anulează** în mesajul care apare, dacă
-  te-ai răzgândit.
+  te-ai răzgândit. Pe telefon gestul folosește evenimentele de atingere (nu pointer
+  events), fiindcă iOS decide devreme că mișcarea e derulare și retrage pointerul.
 - **Favorite prin apăsare lungă** — ține degetul pe o notiță o jumătate de secundă.
   Pe calculator, ține apăsat butonul mouse-ului sau folosește butoanele care apar pe
   notiță când treci cu mouse-ul peste ea.

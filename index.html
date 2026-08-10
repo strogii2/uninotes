@@ -150,6 +150,7 @@
         <span>Folderul cu notițe</span>
       </button>
       <input type="file" id="importInput" accept="application/json" hidden>
+      <p class="versiune" id="versiune"></p>
     </div>
   </aside>
   <div class="scrim" id="scrim" hidden></div>
@@ -245,7 +246,12 @@
         <div class="tags-row" id="tagsRow">
           <svg class="ic tags-row__icon"><use href="#i-tag"></use></svg>
           <div class="chips" id="tagChips"></div>
-          <input id="tagInput" class="tag-input" placeholder="adaugă etichetă…" aria-label="Adaugă etichetă" autocomplete="off">
+          <input id="tagInput" class="tag-input" placeholder="adaugă etichetă…" aria-label="Adaugă etichetă"
+                 autocomplete="off" list="tagSuggestions" maxlength="30">
+          <datalist id="tagSuggestions"></datalist>
+          <button class="chip chip--add" id="tagAddBtn" aria-label="Adaugă eticheta scrisă">
+            <svg class="ic"><use href="#i-plus"></use></svg>
+          </button>
         </div>
 
         <div class="toolbar" id="toolbar" role="toolbar" aria-label="Formatare">

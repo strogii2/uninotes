@@ -6,6 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
+  const VERSIUNE = 4;            // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -541,14 +542,34 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     const cloud = $('#tagCloud');
     cloud.innerHTML = '';
     Array.from(tags.entries()).sort((a, b) => b[1] - a[1]).slice(0, 14).forEach(([t, c]) => {
-      const b = document.createElement('button');
-      b.className = 'tag-pill' + (ui.filter.tag === t ? ' is-active' : '');
-      b.textContent = '#' + t + ' ' + c;
-      b.addEventListener('click', () => {
+      const pilula = document.createElement('span');
+      pilula.className = 'tag-pill' + (ui.filter.tag === t ? ' is-active' : '');
+      pilula.setAttribute('role', 'button');
+      pilula.tabIndex = 0;
+      pilula.title = 'Filtrează după #' + t;
+      pilula.innerHTML = '<span class="tag-pill__text"></span>' +
+        '<button class="tag-pill__x" aria-label="Șterge eticheta ' + escapeHtml(t) +
+        ' din toate notițele" title="Șterge eticheta din toate notițele">' +
+        '<svg class="ic"><use href="#i-x"></use></svg></button>';
+      $('.tag-pill__text', pilula).textContent = '#' + t + ' ' + c;
+
+      const filtreaza = () => {
         ui.filter.tag = ui.filter.tag === t ? null : t;
         renderSidebar(); renderList();
+      };
+      pilula.addEventListener('click', e => {
+        if (e.target.closest('.tag-pill__x')) return;      // tratat separat
+        filtreaza();
       });
-      cloud.appendChild(b);
+      pilula.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); filtreaza(); }
+        else if (e.key === 'Delete') { e.preventDefault(); stergeEtichetaPeste_tot(t); }
+      });
+      $('.tag-pill__x', pilula).addEventListener('click', e => {
+        e.stopPropagation();
+        stergeEtichetaPeste_tot(t);
+      });
+      cloud.appendChild(pilula);
     });
 
     const count = db.notes.length;
@@ -568,12 +589,16 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   /* ==========================================================
      GESTURI PE NOTIȚE
      Trage spre dreapta = șterge. Ține apăsat = favorită.
-     Merg la fel cu degetul și cu mouse-ul (pointer events).
+     Degetul folosește evenimente de atingere, mouse-ul folosește pointer events.
      ========================================================== */
   const APASARE_LUNGA = 480;     // ms
-  const PRAG_MINIM = 12;         // px, până aici nu decidem dacă e derulare sau tragere
+  const PRAG_MINIM = 8;          // px; mic, ca să prindem gestul înainte ca iOS
+                                 // să decidă că e derulare și să ne ia evenimentele
   const REDUS = window.matchMedia &&
                 window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Unde există evenimente de atingere, degetul e tratat de ele; altfel cade pe
+  // pointer events, ca gestul să meargă și pe dispozitivele fără touch events.
+  const ARE_TOUCH = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
   function pragStergere(card) {
     return Math.min(130, Math.max(70, card.offsetWidth * 0.38));
@@ -620,11 +645,10 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       row.classList.remove('is-swiping', 'is-armed');
     };
 
-    card.addEventListener('pointerdown', e => {
-      if (e.pointerType === 'mouse' && e.button !== 0) return;
-      if (e.target.closest('[data-act]')) return;
-      idPointer = e.pointerId;
-      x0 = e.clientX; y0 = e.clientY; dx = 0;
+    /* ---- miezul gestului, folosit și de deget, și de mouse ---- */
+
+    function incepe(x, y) {
+      x0 = x; y0 = y; dx = 0;
       apasat = true; esteTragere = false; blocat = false;
       card.style.transition = 'none';
       opreste();
@@ -635,20 +659,20 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         revino();
         comutaFavorita(note, card);
       }, APASARE_LUNGA);
-    });
+    }
 
-    card.addEventListener('pointermove', e => {
-      if (!apasat || e.pointerId !== idPointer) return;
-      const ddx = e.clientX - x0, ddy = e.clientY - y0;
+    /** Întoarce true dacă am preluat gestul (atunci oprim derularea paginii). */
+    function misca(x, y) {
+      if (!apasat) return false;
+      const ddx = x - x0, ddy = y - y0;
 
       if (!esteTragere) {
-        if (Math.abs(ddx) < PRAG_MINIM && Math.abs(ddy) < PRAG_MINIM) return;
+        if (Math.abs(ddx) < PRAG_MINIM && Math.abs(ddy) < PRAG_MINIM) return false;
         if (Math.abs(ddy) >= Math.abs(ddx)) {      // derulează vertical: nu ne băgăm
-          apasat = false; opreste(); revino(); return;
+          apasat = false; opreste(); revino(); return false;
         }
         esteTragere = true; opreste();
         row.classList.add('is-swiping');
-        try { card.setPointerCapture(idPointer); } catch (err) { /* ignorăm */ }
       }
 
       dx = Math.max(0, ddx);                        // doar spre dreapta
@@ -656,10 +680,10 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       const tras = dx > prag ? prag + (dx - prag) * 0.3 : dx;   // rezistență după prag
       card.style.transform = 'translateX(' + tras + 'px)';
       row.classList.toggle('is-armed', dx >= prag);
-    });
+      return true;
+    }
 
-    const incheie = e => {
-      if (e && e.pointerId !== idPointer) return;
+    function termina() {
       opreste();
       if (!apasat && !esteTragere) return;
       const eraTragere = esteTragere;
@@ -679,6 +703,50 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         // amânăm: altfel click-ul care urmează ar cădea pe cardul nou
         setTimeout(() => { renderList(); renderSidebar(); }, 0);
       }
+    }
+
+    /* ---- deget: evenimente de atingere ----
+       Pe iOS nu ne putem baza pe pointer events: Safari decide devreme că gestul
+       e derulare și anulează pointerul, iar `touch-action` singur nu ajunge.
+       Cu touchmove non-pasiv putem opri noi derularea, exact când trebuie. */
+    card.addEventListener('touchstart', e => {
+      if (e.touches.length !== 1) { apasat = false; opreste(); revino(); return; }
+      if (e.target.closest('[data-act]')) return;
+      const t = e.touches[0];
+      incepe(t.clientX, t.clientY);
+    }, { passive: true });
+
+    card.addEventListener('touchmove', e => {
+      if (!apasat || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      if (misca(t.clientX, t.clientY)) e.preventDefault();   // oprim derularea paginii
+    }, { passive: false });
+
+    card.addEventListener('touchend', termina);
+    card.addEventListener('touchcancel', termina);
+
+    /* ---- mouse (și degetul, unde nu există evenimente de atingere) ---- */
+    const ignoraPointer = e => e.pointerType === 'touch' && ARE_TOUCH;
+
+    card.addEventListener('pointerdown', e => {
+      if (ignoraPointer(e)) return;                 // deja tratat de touchstart
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (e.target.closest('[data-act]')) return;
+      idPointer = e.pointerId;
+      incepe(e.clientX, e.clientY);
+    });
+
+    card.addEventListener('pointermove', e => {
+      if (ignoraPointer(e) || e.pointerId !== idPointer) return;
+      const eraTragere = esteTragere;
+      if (misca(e.clientX, e.clientY) && !eraTragere) {
+        try { card.setPointerCapture(idPointer); } catch (err) { /* ignorăm */ }
+      }
+    });
+
+    const incheie = e => {
+      if (ignoraPointer(e) || e.pointerId !== idPointer) return;
+      termina();
     };
     card.addEventListener('pointerup', incheie);
     card.addEventListener('pointercancel', incheie);
@@ -809,9 +877,61 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     $('#subjDot').style.background = s ? s.color : 'var(--border-strong)';
   }
 
+  /** Adaugă o etichetă notiței deschise. Întoarce true dacă s-a adăugat ceva nou. */
+  function adaugaEticheta(note, brut) {
+    const t = String(brut || '').trim().replace(/^#+/, '').replace(/\s+/g, '-').toLowerCase();
+    if (!t) return false;
+    note.tags = note.tags || [];
+    if (note.tags.includes(t)) return false;
+    note.tags.push(t);
+    touch(note);
+    renderTags(note);
+    renderSidebar();
+    renderList();
+    return true;
+  }
+
+  /** Scoate o etichetă din toate notițele, cu confirmare și posibilitate de anulare. */
+  async function stergeEtichetaPeste_tot(tag) {
+    const afectate = db.notes.filter(n => (n.tags || []).includes(tag));
+    const ok = await confirmDialog(
+      'Ștergi eticheta?',
+      'Eticheta #' + tag + ' va fi scoasă din ' + afectate.length +
+      (afectate.length === 1 ? ' notiță.' : ' notițe.') + ' Notițele rămân neatinse.',
+      'Șterge eticheta');
+    if (!ok) return;
+
+    const copie = afectate.map(n => ({ id: n.id, tags: (n.tags || []).slice() }));
+    afectate.forEach(n => { n.tags = n.tags.filter(x => x !== tag); n.updatedAt = now(); });
+    if (ui.filter.tag === tag) ui.filter.tag = null;
+    persist(); renderSidebar(); renderList();
+    const deschisa = activeNote();
+    if (deschisa) renderTags(deschisa);
+
+    toast('Eticheta #' + tag + ' a fost ștearsă', 'ok', {
+      label: 'Anulează',
+      fn: () => {
+        copie.forEach(c => {
+          const n = db.notes.find(x => x.id === c.id);
+          if (n) n.tags = c.tags;
+        });
+        persist(); renderSidebar(); renderList();
+        const n2 = activeNote();
+        if (n2) renderTags(n2);
+      }
+    });
+  }
+
   function renderTags(note) {
     const wrap = $('#tagChips');
     wrap.innerHTML = '';
+
+    // sugestii din etichetele deja folosite
+    const toate = new Set();
+    db.notes.forEach(n => (n.tags || []).forEach(t => toate.add(t)));
+    $('#tagSuggestions').innerHTML =
+      Array.from(toate).sort().map(t => '<option value="' + escapeHtml(t) + '">').join('');
+
     (note.tags || []).forEach(t => {
       const chip = document.createElement('span');
       chip.className = 'chip';
@@ -1246,14 +1366,18 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       const n = activeNote(); if (!n) return;
       if (e.key === 'Enter' || e.key === ',') {
         e.preventDefault();
-        const v = e.target.value.trim().replace(/^#/, '').toLowerCase();
-        if (!v) return;
-        n.tags = n.tags || [];
-        if (!n.tags.includes(v)) { n.tags.push(v); touch(n); renderTags(n); }
+        adaugaEticheta(n, e.target.value);
         e.target.value = '';
       } else if (e.key === 'Backspace' && !e.target.value && (n.tags || []).length) {
-        n.tags.pop(); touch(n); renderTags(n);
+        n.tags.pop(); touch(n); renderTags(n); renderSidebar(); renderList();
       }
+    });
+
+    $('#tagAddBtn').addEventListener('click', () => {
+      const n = activeNote(); if (!n) return;
+      const camp = $('#tagInput');
+      if (camp.value.trim()) { adaugaEticheta(n, camp.value); camp.value = ''; }
+      camp.focus();                       // gol: doar ducem cursorul în câmp
     });
 
     $('#favBtn').addEventListener('click', () => {
@@ -1483,6 +1607,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     renderEditor();
     showPane(ui.activeId && window.innerWidth > 860 ? 'editor' : 'list');
 
+    $('#versiune').textContent = 'versiunea ' + VERSIUNE;
+
     if (api()) {
       const btn = $('#dataFolderBtn');
       btn.hidden = false;
@@ -1501,9 +1627,20 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     // service worker: ține aplicația în telefon, ca să meargă și fără internet.
     // În aplicația desktop nu-l vrem — ar servi versiuni vechi după o actualizare.
     if (!DESKTOP && 'serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      // dacă exista deja un service worker, înseamnă că aplicația e instalată;
+      // când se activează unul nou, reîncărcăm o dată ca schimbările să intre imediat
+      const aveaControlor = !!navigator.serviceWorker.controller;
+      let reincarcat = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!aveaControlor || reincarcat) return;
+        reincarcat = true;
+        flushSave();                       // nu pierdem ultimele tastări
+        location.reload();
+      });
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js').catch(err =>
-          console.warn('[UniNotes] service worker neînregistrat', err));
+        navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+          .then(reg => reg.update())
+          .catch(err => console.warn('[UniNotes] service worker neînregistrat', err));
       });
     }
 
