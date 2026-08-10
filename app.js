@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 6;            // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 7;            // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -1730,7 +1730,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     const el = $('#orarKeyLabel');
     if (!el) return;
     const f = furnizorPentru(cheieAI());
-    el.textContent = f ? 'Scanare: ' + FURNIZORI[f].nume : 'Cheie pentru scanare';
+    el.textContent = f ? 'Scanare: ' + FURNIZORI[f].nume : 'Scanare: pe dispozitiv · pune o cheie';
   }
 
   function deschideCheia() {
@@ -1747,8 +1747,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     const k = $('#cheieInput').value.trim();
     if (!k) {
       el.textContent = 'Cheia rămâne doar pe dispozitivul acesta: stă separat de notițe, ' +
-                       'deci nu intră în copiile de siguranță. Orele se pot adăuga oricând ' +
-                       'și de mână, fără nicio cheie.';
+                       'deci nu intră în copiile de siguranță. Lasă câmpul gol dacă vrei ' +
+                       'citirea pe dispozitiv.';
       el.classList.remove('e-rau');
       return;
     }
@@ -1852,12 +1852,262 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     return 'Scanarea a eșuat' + (detaliu ? ': ' + detaliu : ' (cod ' + status + ').');
   }
 
+  /* ==========================================================
+     CITIREA PE DISPOZITIV (fără cheie, fără internet după prima dată)
+     Tesseract dă cuvintele cu poziția lor în poză. Textul citit „la rând"
+     e inutilizabil pentru un tabel — sare între coloane — dar din coordonate
+     se poate reconstrui grila: zilele dau coloanele, intervalele dau rândurile.
+     ========================================================== */
+  const TESSERACT_JS = 'https://cdn.jsdelivr.net/npm/tesseract.js@6/dist/tesseract.min.js';
+  const PRAG_INCREDERE = 55;      // sub atât, cuvântul e mai degrabă zgomot decât text
+  let tesseractPromis = null;
+  let ocrWorker = null;
+
+  function incarcaTesseract() {
+    if (window.Tesseract) return Promise.resolve(window.Tesseract);
+    if (tesseractPromis) return tesseractPromis;
+    tesseractPromis = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = TESSERACT_JS;
+      s.onload = () => window.Tesseract
+        ? resolve(window.Tesseract)
+        : reject(new Error('Motorul de citire nu s-a încărcat.'));
+      s.onerror = () => {
+        tesseractPromis = null;
+        reject(new Error('Nu am putut descărca motorul de citire. Verifică internetul.'));
+      };
+      document.head.appendChild(s);
+    });
+    return tesseractPromis;
+  }
+
+  /**
+   * Alb-negru cu prag Otsu, la o mărime potrivită.
+   * Fără asta, o poză înclinată și cu umbră pierde rânduri întregi din orar.
+   */
+  function pregatesteOCR(file) {
+    return new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onerror = () => reject(new Error('Nu am putut citi fișierul.'));
+      fr.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('Fișierul nu pare a fi o imagine.'));
+        img.onload = () => {
+          try {
+            const TINTA = 2400;
+            const f = Math.min(2.2, Math.max(0.5, TINTA / Math.max(img.width, img.height)));
+            const w = Math.max(1, Math.round(img.width * f));
+            const h = Math.max(1, Math.round(img.height * f));
+            const c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            const g = c.getContext('2d');
+            g.imageSmoothingQuality = 'high';
+            g.drawImage(img, 0, 0, w, h);
+
+            const d = g.getImageData(0, 0, w, h), p = d.data;
+            const hist = new Array(256).fill(0);
+            for (let i = 0; i < p.length; i += 4) {
+              const v = (p[i] * 0.299 + p[i + 1] * 0.587 + p[i + 2] * 0.114) | 0;
+              p[i] = p[i + 1] = p[i + 2] = v;
+              hist[v]++;
+            }
+            // pragul Otsu: alege singur unde se termină hârtia și începe cerneala
+            const tot = w * h;
+            let sum = 0;
+            for (let i = 0; i < 256; i++) sum += i * hist[i];
+            let sumB = 0, wB = 0, maxim = 0, prag = 128;
+            for (let i = 0; i < 256; i++) {
+              wB += hist[i];
+              if (!wB) continue;
+              const wF = tot - wB;
+              if (!wF) break;
+              sumB += i * hist[i];
+              const mB = sumB / wB, mF = (sum - sumB) / wF;
+              const intre = wB * wF * (mB - mF) * (mB - mF);
+              if (intre > maxim) { maxim = intre; prag = i; }
+            }
+            for (let i = 0; i < p.length; i += 4) {
+              const v = p[i] > prag ? 255 : 0;
+              p[i] = p[i + 1] = p[i + 2] = v;
+            }
+            g.putImageData(d, 0, 0);
+            resolve(c.toDataURL('image/png'));
+          } catch (e) {
+            reject(new Error('Nu am putut pregăti poza.'));
+          }
+        };
+        img.src = fr.result;
+      };
+      fr.readAsDataURL(file);
+    });
+  }
+
+  const ZI_PRESCURTAT = {
+    luni: 0, lun: 0, lu: 0, marti: 1, mar: 1, ma: 1, miercuri: 2, mie: 2, mi: 2,
+    joi: 3, jo: 3, vineri: 4, vin: 4, vi: 4, sambata: 5, sam: 5, sa: 5,
+    duminica: 6, dum: 6, du: 6
+  };
+
+  /** Din cuvinte cu coordonate face înapoi tabelul orarului. */
+  function reconstruieșteOrar(cuvinte) {
+    const centru = w => ({ x: (w.x0 + w.x1) / 2, y: (w.y0 + w.y1) / 2 });
+    const zile = [], intervale = [], restul = [];
+
+    cuvinte.forEach(w => {
+      const t = faraDiacritice(w.t).replace(/[^a-z0-9:.\-–]/g, '');
+      const z = ZI_PRESCURTAT[t];
+      const m = /^(\d{1,2})(?:[:.](\d{2}))?\s*[-–—]\s*(\d{1,2})(?:[:.](\d{2}))?$/.exec(t);
+      if (z !== undefined && t.length >= 2) zile.push(Object.assign({ zi: z }, centru(w)));
+      else if (m) intervale.push(Object.assign({ m: m }, centru(w)));
+      else if (t.length) restul.push(Object.assign({ t: w.t, c: w.c }, centru(w)));
+    });
+
+    if (zile.length < 2 || intervale.length < 2) {
+      return { ore: [], observatii: 'Nu am găsit nici zilele, nici intervalele orare în poză. ' +
+        'Încearcă o fotografie mai dreaptă, care să prindă tot tabelul.' };
+    }
+
+    // zilele înșirate pe orizontală înseamnă zile pe coloane; altfel, pe rânduri
+    const intindere = a => Math.max.apply(null, a) - Math.min.apply(null, a);
+    const peColoane = intindere(zile.map(z => z.x)) > intindere(zile.map(z => z.y));
+
+    const unic = (lista, cheie) => {
+      const v = {};
+      lista.forEach(x => { if (v[cheie(x)] === undefined) v[cheie(x)] = x; });
+      return Object.keys(v).map(k => v[k]);
+    };
+    const zileU = unic(zile, z => z.zi).sort((a, b) => peColoane ? a.x - b.x : a.y - b.y);
+    const oreU = unic(intervale, o => o.m[0]).sort((a, b) => peColoane ? a.y - b.y : a.x - b.x);
+
+    // granița dintre două benzi vecine trece prin mijlocul distanței dintre ele
+    const benzi = (lista, ax) => {
+      const c = lista.map(x => x[ax]);
+      return c.map((_, i) => [
+        i === 0 ? -Infinity : (c[i - 1] + c[i]) / 2,
+        i === c.length - 1 ? Infinity : (c[i] + c[i + 1]) / 2
+      ]);
+    };
+    const bZi = benzi(zileU, peColoane ? 'x' : 'y');
+    const bOra = benzi(oreU, peColoane ? 'y' : 'x');
+
+    const celule = {};
+    restul.forEach(r => {
+      const vz = peColoane ? r.x : r.y, vo = peColoane ? r.y : r.x;
+      const iz = bZi.findIndex(g => vz >= g[0] && vz < g[1]);
+      const io = bOra.findIndex(g => vo >= g[0] && vo < g[1]);
+      if (iz < 0 || io < 0) return;
+      // antetul tabelului nu e conținut
+      if (peColoane ? (r.y < oreU[0].y - 40) : (r.x < oreU[0].x - 40)) return;
+      (celule[iz + ',' + io] = celule[iz + ',' + io] || []).push(r);
+    });
+
+    const doua = n => String(n).padStart(2, '0');
+    const NUME_ZI = ['luni', 'marti', 'miercuri', 'joi', 'vineri', 'sambata', 'duminica'];
+    const ore = [];
+
+    Object.keys(celule).forEach(k => {
+      const parti = k.split(',');
+      const iz = +parti[0], io = +parti[1];
+      let lista = celule[k].sort((a, b) => (a.y - b.y) || (a.x - b.x));
+
+      let tip = '';
+      lista = lista.filter(x => {
+        const f = faraDiacritice(x.t).replace(/[^a-z]/g, '');
+        if (/^(c|curs)$/.test(f)) { tip = 'curs'; return false; }
+        if (/^(s|sem|seminar)$/.test(f)) { tip = 'seminar'; return false; }
+        if (/^(l|lab|laborator)$/.test(f)) { tip = 'laborator'; return false; }
+        if (/^(p|proiect)$/.test(f)) { tip = 'proiect'; return false; }
+        return true;
+      });
+
+      let sala = '';
+      lista = lista.filter(x => {
+        if (sala) return true;
+        // minim două cifre: altfel un „S" citit greșit ca „5" ar trece drept sală
+        if (/^[A-Za-z]{0,4}\.?\s?\d{2,4}[A-Za-z]?$/.test(x.t) || /^(amf|sala|sl|lab)/i.test(x.t)) {
+          sala = x.t;
+          return false;
+        }
+        return true;
+      });
+
+      // resturile de o literă și cuvintele citite nesigur strică denumirea
+      lista = lista.filter(x =>
+        x.t.replace(/[^A-Za-zĂÂÎȘȚăâîșț0-9]/g, '').length > 1 && x.c >= PRAG_INCREDERE);
+
+      const materie = lista.map(x => x.t).join(' ').replace(/\s+/g, ' ').trim();
+      if (materie.length < 3) return;
+
+      const m = oreU[io].m;
+      ore.push({
+        zi: NUME_ZI[zileU[iz].zi],
+        start: doua(+m[1]) + ':' + (m[2] || '00'),
+        sfarsit: doua(+m[3]) + ':' + (m[4] || '00'),
+        materie: materie, tip: tip || 'curs', sala: sala, profesor: '', saptamana: 'toate'
+      });
+    });
+
+    return {
+      ore: ore,
+      observatii: ore.length
+        ? 'Citit pe dispozitiv, fără internet. Ziua și ora ies de obicei bine; ' +
+          'verifică mai ales sălile și tipul orei — acolo greșește cel mai des.'
+        : 'Am recunoscut tabelul, dar nu și conținutul casetelor. Încearcă o poză mai apropiată.'
+    };
+  }
+
+  async function citesteLocal(file) {
+    const T = await incarcaTesseract();
+    $('#scanBusyText').textContent = 'Pregătesc poza…';
+    const poza = await pregatesteOCR(file);
+
+    ocrWorker = await T.createWorker('ron', 1, {
+      logger: m => {
+        if (!m || !m.status) return;
+        const pas = /recognizing/i.test(m.status) ? 'Citesc textul'
+                  : /load|initial/i.test(m.status) ? 'Pregătesc motorul'
+                  : 'Descarc modelul de citire';
+        $('#scanBusyText').textContent = pas + '… ' + Math.round((m.progress || 0) * 100) + '%';
+      }
+    });
+    try {
+      const r = await ocrWorker.recognize(poza, {}, { blocks: true });
+      const cuvinte = [];
+      (r.data.blocks || []).forEach(b => (b.paragraphs || []).forEach(p => (p.lines || []).forEach(l =>
+        (l.words || []).forEach(w => {
+          if (w && w.bbox) cuvinte.push({
+            t: w.text, c: w.confidence,
+            x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1
+          });
+        }))));
+      return reconstruieșteOrar(cuvinte);
+    } finally {
+      const w = ocrWorker;
+      ocrWorker = null;
+      try { await w.terminate(); } catch (e) { /* deja oprit */ }
+    }
+  }
+
   let scanCtrl = null;
 
   async function scaneazaPoza(file) {
     const cheie = cheieAI();
     const numeFurnizor = furnizorPentru(cheie);
-    if (!cheie || !numeFurnizor) { deschideCheia(); return; }
+
+    // Fără cheie citim pe dispozitiv: merge oriunde, gratis, dar mai puțin exact.
+    if (!numeFurnizor) {
+      $('#scanBusyText').textContent = 'Pregătesc citirea pe dispozitiv…';
+      $('#scanBusy').showModal();
+      try {
+        arataRezultatul(await citesteLocal(file));
+      } catch (e) {
+        toast(e.message || 'Nu am putut citi poza.', 'err', null, 6000);
+      } finally {
+        if ($('#scanBusy').open) $('#scanBusy').close();
+      }
+      return;
+    }
+
     const furnizor = FURNIZORI[numeFurnizor];
 
     let img;
@@ -2083,16 +2333,18 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       });
     });
 
-    $('#orarScanBtn').addEventListener('click', () => {
-      if (!furnizorPentru(cheieAI())) { deschideCheia(); return; }
-      $('#orarFoto').click();
-    });
+    // merge și fără cheie — atunci citirea se face pe dispozitiv
+    $('#orarScanBtn').addEventListener('click', () => $('#orarFoto').click());
     $('#orarFoto').addEventListener('change', async e => {
       const f = e.target.files[0];
       e.target.value = '';                       // aceeași poză poate fi aleasă din nou
       if (f) await scaneazaPoza(f);
     });
-    $('#scanRenunta').addEventListener('click', () => { if (scanCtrl) scanCtrl.abort(); });
+    $('#scanRenunta').addEventListener('click', () => {
+      if (scanCtrl) scanCtrl.abort();
+      if (ocrWorker) { const w = ocrWorker; ocrWorker = null; try { w.terminate(); } catch (e) { /* deja oprit */ } }
+      if ($('#scanBusy').open) $('#scanBusy').close();
+    });
 
     $('#oraForm').addEventListener('submit', e => {
       const materie = $('#oraMaterie').value.trim();

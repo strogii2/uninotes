@@ -95,18 +95,22 @@ Dacă fișierul ajunge totuși corupt, aplicația îl pune deoparte ca `notite.j
   lista a ce s-a înțeles și poți scoate rândurile greșite; apoi alegi „Adaugă la orar" sau
   „Înlocuiește orarul". Materiile care nu există încă pot fi create cu un buton.
 
-  Pentru asta e nevoie de o cheie, pusă o singură dată din „Cheie pentru scanare".
-  Sunt două variante — lipești cheia de la oricare, iar aplicația își dă seama singură
-  care e, după cum începe:
+  **Scanarea merge fără niciun cont și fără nicio cheie.** Fără cheie, poza e citită chiar
+  pe dispozitiv (Tesseract, în browser): nu iese nimic în internet, e gratis și merge pe
+  orice telefon. Prima citire descarcă vreo 6 MB, o singură dată.
 
-  | Serviciu | Cost | Cheia începe cu | De reținut |
+  Cu o cheie, poza e citită de un model care „vede" imagini și rezultatul e vizibil mai bun.
+  Lipești cheia de la oricare dintre cele două — aplicația își dă seama singură care e, după
+  cum începe:
+
+  | Cum citește | Cost | Cheia | Cât de exact |
   | --- | --- | --- | --- |
-  | [Google AI Studio](https://aistudio.google.com/apikey) | **gratuit**, fără card | `AIza…` | poza ajunge la Google, iar pe planul gratuit Google poate folosi datele ca să-și îmbunătățească serviciile |
-  | [Anthropic (Claude)](https://console.anthropic.com/settings/keys) | câțiva cenți pe scanare | `sk-ant-…` | cere card; pozele nu sunt folosite pentru antrenare |
+  | **pe dispozitiv** (implicit) | gratis, fără cont | — | ziua și ora ies de obicei bine; sălile și tipul orei trebuie deseori corectate |
+  | [Google AI Studio](https://aistudio.google.com/apikey) | **gratuit**, fără card | `AIza…` | foarte bun; poza ajunge la Google, iar pe planul gratuit datele pot fi folosite pentru îmbunătățirea serviciilor |
+  | [Anthropic (Claude)](https://console.anthropic.com/settings/keys) | câțiva cenți | `sk-ant-…` | foarte bun; cere card, dar pozele nu sunt folosite pentru antrenare |
 
   **Cheia rămâne doar pe dispozitivul tău**: stă separat de notițe, deci nu intră în copiile
-  de siguranță exportate. Poza e micșorată la 2200 px înainte de trimitere. Fără cheie,
-  orarul se completează manual; restul aplicației funcționează la fel.
+  de siguranță exportate. Oricum ar fi citită poza, vezi lista înainte să se salveze ceva.
 - **Fixare** (notița stă sus) și **favorite**.
 - **Arhivă** pentru notițele terminate, ca să nu aglomereze lista.
 - **Mod întunecat implicit**, pentru sesiunile de învățat de seara. Dacă îl schimbi pe
@@ -161,7 +165,17 @@ Orarul stă în același fișier cu notițele, sub cheia `orar`. Fișierele făc
 orarul să existe nu au cheia asta — se adaugă goală la citire, deci copiile vechi se
 deschid normal.
 
-Scanarea pozei e singurul moment în care aplicația vorbește cu ceva din afară. Poza e
+Citirea pe dispozitiv nu trimite poza nicăieri. Tesseract dă înapoi fiecare cuvânt împreună
+cu poziția lui în imagine — textul citit „la rând" e inutilizabil pentru un tabel, fiindcă
+sare între coloane, dar din coordonate se poate reconstrui grila: cuvintele care sunt nume
+de zile dau coloanele, intervalele orare dau rândurile, granița dintre două benzi vecine
+trece prin mijlocul distanței dintre centrele lor, iar fiecare cuvânt rămas cade în caseta
+în care se află. Merge și cu orarele întoarse, cu zilele pe rânduri. Înainte de citire poza
+e trecută în alb-negru cu prag Otsu și adusă la ~2400 px; fără pasul ăsta, o poză înclinată
+și cu umbră pierde rânduri întregi. Cuvintele citite nesigur sunt scoase din denumiri —
+mai bine o denumire scurtă decât una cu litere inventate.
+
+Scanarea prin cheie e singurul moment în care aplicația vorbește cu ceva din afară. Poza e
 micșorată în browser (canvas, maxim 2200 px pe latura lungă, JPEG) și trimisă cu cheia ta
 direct de pe dispozitiv — nu există server intermediar. Cei doi furnizori stau într-un
 tabel (`FURNIZORI` din `app.js`): fiecare își spune adresa, antetele, forma cererii și de
