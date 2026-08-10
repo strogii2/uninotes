@@ -59,6 +59,7 @@
       version: 1,
       settings: { theme: 'dark' },
       orar: { entries: [] },
+      termene: [],
       subjects: [
         { id: s1, name: 'Analiză Matematică', color: '#2563EB', prof: 'Prof. Popescu' },
         { id: s2, name: 'Programare Orientată pe Obiecte', color: '#059669', prof: 'Conf. Ionescu' },
@@ -180,6 +181,19 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       saptamana: ['para', 'impara'].indexOf(o.saptamana) >= 0 ? o.saptamana : 'toate',
       subjectId: o.subjectId || null
     })).filter(o => o.materie);
+
+    // termenele au apărut și mai târziu decât orarul
+    if (!Array.isArray(parsed.termene)) parsed.termene = [];
+    parsed.termene = parsed.termene.filter(t => t && typeof t === 'object').map(t => ({
+      id: t.id || uid(),
+      titlu: String(t.titlu || '').slice(0, 80),
+      data: /^\d{4}-\d{2}-\d{2}$/.test(t.data) ? t.data : '',
+      tip: ['examen', 'partial', 'colocviu', 'predare', 'test'].indexOf(t.tip) >= 0 ? t.tip : '',
+      subjectId: t.subjectId || null,
+      nota: String(t.nota || '').slice(0, 120),
+      gata: !!t.gata
+    })).filter(t => t.titlu && t.data);
+
     return parsed;
   }
 
@@ -519,6 +533,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     $$('.nav__item[data-filter]').forEach(b =>
       b.classList.toggle('is-active', ui.filter.type === b.dataset.filter));
     actualizeazaInsigna();
+    actualizeazaInsignaTermene();
 
     const wrap = $('#subjectList');
     wrap.innerHTML = '';
@@ -1327,7 +1342,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         notes: data.notes,
         // backup-urile făcute înainte de apariția orarului nu-l au: păstrăm ce e acum,
         // ca importul unei copii vechi să nu șteargă orele pe tăcute
-        orar: (data.orar && Array.isArray(data.orar.entries)) ? data.orar : orar()
+        orar: (data.orar && Array.isArray(data.orar.entries)) ? data.orar : orar(),
+        termene: Array.isArray(data.termene) ? data.termene : termene()
       };
       normalize(db);
       ui.activeId = null;
@@ -2373,11 +2389,186 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     toast(adaugate + (adaugate === 1 ? ' materie adăugată' : ' materii adăugate'), 'ok');
   }
 
+  /* ==========================================================
+     TERMENE ȘI EXAMENE
+     Lucruri cu o dată fixă, spre deosebire de orar, care se repetă.
+     ========================================================== */
+  const TIPURI_TERMEN = [
+    ['examen', 'Examen'], ['partial', 'Parțial'], ['colocviu', 'Colocviu'],
+    ['predare', 'Predare'], ['test', 'Test'], ['', 'Altceva']
+  ];
+  let termenEditat = null;
+
+  function termene() {
+    if (!Array.isArray(db.termene)) db.termene = [];
+    return db.termene;
+  }
+
+  const doiDigiti = n => String(n).padStart(2, '0');
+  const caData = d => d.getFullYear() + '-' + doiDigiti(d.getMonth() + 1) + '-' + doiDigiti(d.getDate());
+
+  /** Câte zile mai sunt până la termen: 0 = azi, negativ = a trecut. */
+  function zileRamase(text) {
+    const p = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text || '');
+    if (!p) return null;
+    const t = new Date(+p[1], +p[2] - 1, +p[3]);
+    t.setHours(0, 0, 0, 0);
+    const azi = new Date();
+    azi.setHours(0, 0, 0, 0);
+    return Math.round((t - azi) / 86400000);
+  }
+
+  // peste 19, româna cere „de": 19 zile, dar 20 de zile
+  const zileCu = n => n + (n % 100 >= 20 || n % 100 === 0 ? ' de zile' : ' zile');
+
+  function textZile(z) {
+    if (z === 0) return 'astăzi';
+    if (z === 1) return 'mâine';
+    if (z === 2) return 'poimâine';
+    if (z > 0) return 'în ' + zileCu(z);
+    if (z === -1) return 'de ieri';
+    return 'de acum ' + zileCu(Math.abs(z));
+  }
+
+  /** Termenele nerezolvate, de la cel mai apropiat. Restanțele vin primele. */
+  function termeneDeFacut() {
+    return termene().filter(t => !t.gata && zileRamase(t.data) !== null)
+                    .sort((a, b) => zileRamase(a.data) - zileRamase(b.data));
+  }
+
+  function actualizeazaInsignaTermene() {
+    const el = $('#cTermene'), btn = $('#termeneBtn');
+    if (!el || !btn) return;
+    const lista = termeneDeFacut();
+    if (!lista.length) {
+      el.textContent = '—';
+      btn.title = 'Examene, predări și alte termene';
+      return;
+    }
+    const z = zileRamase(lista[0].data);
+    el.textContent = z < 0 ? '!' : (z === 0 ? 'azi' : String(z) + 'z');
+    btn.title = (z < 0 ? 'Restant: ' : 'Urmează: ') + lista[0].titlu + ' — ' + textZile(z);
+  }
+
+  function randTermen(t) {
+    const z = zileRamase(t.data);
+    const s = t.subjectId ? db.subjects.find(x => x.id === t.subjectId) : null;
+    const rand = document.createElement('div');
+    rand.className = 'termen' + (t.gata ? ' e-gata' : (z < 0 ? ' e-restant' : (z === 0 ? ' e-azi' : '')));
+    if (s) rand.style.borderLeftColor = s.color;
+
+    const eticheta = (TIPURI_TERMEN.filter(x => x[0] === (t.tip || ''))[0] || ['', 'Altceva'])[1];
+    const detalii = [];
+    if (s) detalii.push(escapeHtml(s.name));
+    if (t.nota) detalii.push(escapeHtml(t.nota));
+
+    rand.innerHTML =
+      '<button type="button" class="termen__bifa" role="checkbox" aria-checked="' + (t.gata ? 'true' : 'false') + '"' +
+        ' aria-label="' + (t.gata ? 'Marchează nefăcut' : 'Marchează făcut') + '">' +
+        '<svg class="ic"><use href="#i-check"></use></svg></button>' +
+      '<button type="button" class="termen__corp">' +
+        '<span class="termen__titlu"></span>' +
+        '<span class="termen__meta"><span class="tip-pill">' + escapeHtml(eticheta) + '</span>' +
+        (detalii.length ? '<span>' + detalii.join(' · ') + '</span>' : '') + '</span>' +
+      '</button>' +
+      '<span class="termen__cand"><strong></strong><small></small></span>';
+
+    $('.termen__titlu', rand).textContent = t.titlu;
+    $('.termen__cand strong', rand).textContent = z === null ? '' : textZile(z);
+    $('.termen__cand small', rand).textContent = t.data.split('-').reverse().join('.');
+
+    $('.termen__bifa', rand).addEventListener('click', () => {
+      t.gata = !t.gata;
+      salveazaTermene();
+      toast(t.gata ? 'Bifat: ' + t.titlu : 'Pus înapoi în listă', 'ok');
+    });
+    $('.termen__corp', rand).addEventListener('click', () => deschideTermen(t));
+    return rand;
+  }
+
+  function renderTermene() {
+    const wrap = $('#termeneLista');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+
+    const toate = termene().slice().sort((a, b) => {
+      const za = zileRamase(a.data), zb = zileRamase(b.data);
+      return (za === null ? 1e9 : za) - (zb === null ? 1e9 : zb);
+    });
+
+    const grupe = [
+      ['Restante', toate.filter(t => !t.gata && zileRamase(t.data) < 0)],
+      ['Astăzi', toate.filter(t => !t.gata && zileRamase(t.data) === 0)],
+      ['Zilele următoare', toate.filter(t => !t.gata && zileRamase(t.data) > 0 && zileRamase(t.data) <= 7)],
+      ['Mai târziu', toate.filter(t => !t.gata && zileRamase(t.data) > 7)],
+      ['Făcute', toate.filter(t => t.gata)]
+    ];
+
+    if (!toate.length) {
+      const gol = document.createElement('p');
+      gol.className = 'zi-goala';
+      gol.textContent = 'Niciun termen deocamdată. Adaugă examenele, colocviile și predările ' +
+                        'ca să le ai la vedere.';
+      wrap.appendChild(gol);
+    }
+
+    grupe.forEach(g => {
+      if (!g[1].length) return;
+      const cap = document.createElement('h3');
+      cap.className = 'termene__cap';
+      cap.textContent = g[0];
+      wrap.appendChild(cap);
+      g[1].forEach(t => wrap.appendChild(randTermen(t)));
+    });
+
+    actualizeazaInsignaTermene();
+  }
+
+  function salveazaTermene() {
+    persist();
+    renderTermene();
+    renderSidebar();
+  }
+
+  function deschideTermene() {
+    renderTermene();
+    closeNav();
+    $('#termeneDlg').showModal();
+  }
+
+  function deschideTermen(t) {
+    termenEditat = t || null;
+    $('#termenModalTitlu').textContent = t ? 'Editează termenul' : 'Termen nou';
+    $('#termenTitlu').value = t ? t.titlu : '';
+    $('#termenData').value = t ? t.data : caData(new Date());
+    umpleSelect($('#termenTip'), TIPURI_TERMEN, t ? (t.tip || '') : 'examen');
+    umpleSelect($('#termenMaterie'),
+      [['', '— fără materie —']].concat(db.subjects.map(s => [s.id, s.name])),
+      t ? (t.subjectId || '') : '');
+    $('#termenNota').value = t ? (t.nota || '') : '';
+    $('#termenDelete').hidden = !t;
+    $('#termenModal').showModal();
+  }
+
   /* ---------- anunțul de dimineață ---------- */
+  /** Ce e restant sau bate la ușă în următoarele 7 zile. */
+  function anuntaTermenele() {
+    const lista = termeneDeFacut().filter(t => zileRamase(t.data) <= 7);
+    if (!lista.length) return;
+    const t = lista[0];
+    const z = zileRamase(t.data);
+    const rest = lista.length - 1;
+    const text = (z < 0 ? 'Restant: ' : 'Urmează: ') + t.titlu + ' — ' + textZile(z) +
+                 (rest ? ' (și încă ' + rest + ')' : '');
+    setTimeout(() => toast(text, z < 0 ? 'err' : 'ok',
+      { label: 'Vezi termenele', fn: deschideTermene }, 8000), 1200);
+  }
+
   const CHEIE_ANUNT = 'uninotes.orar-anunt';
 
   function anuntaOrarul() {
-    if (!orar().entries.length) return;
+    // fără orar dar cu termene, anunțul tot are ce spune
+    if (!orar().entries.length && !termeneDeFacut().length) return;
     const azi = new Date().toDateString();
     try {
       if (localStorage.getItem(CHEIE_ANUNT) === azi) return;
@@ -2387,13 +2578,16 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     const lista = oreZiActive(ziAzi());
     setTimeout(() => {
       const vezi = { label: 'Vezi orarul', fn: deschideOrar };
-      if (!lista.length) {
+      if (!orar().entries.length) {
+        /* n-are orar: sărim direct la termene */
+      } else if (!lista.length) {
         toast('Astăzi nu ai nimic în orar.', 'ok', vezi, 5000);
-        return;
+      } else {
+        const urm = lista.filter(o => inMinute(o.start) > minAcum())[0] || lista[0];
+        toast('Azi ai ' + lista.length + (lista.length === 1 ? ' oră' : ' ore') +
+              ' · ' + urm.start + ' ' + urm.materie, 'ok', vezi, 7000);
       }
-      const urm = lista.filter(o => inMinute(o.start) > minAcum())[0] || lista[0];
-      toast('Azi ai ' + lista.length + (lista.length === 1 ? ' oră' : ' ore') +
-            ' · ' + urm.start + ' ' + urm.materie, 'ok', vezi, 7000);
+      anuntaTermenele();
     }, 900);
   }
 
@@ -2429,6 +2623,47 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       salveazaOrarul();
       toast(tip ? 'Am reținut: săptămâna asta e ' + (tip === 'para' ? 'pară' : 'impară')
                 : 'Arăt din nou toate orele', 'ok');
+    });
+
+    /* ---------- termene ---------- */
+    $('#termeneBtn').addEventListener('click', deschideTermene);
+    $('#termeneClose').addEventListener('click', () => $('#termeneDlg').close());
+    $('#termeneClose2').addEventListener('click', () => $('#termeneDlg').close());
+    $('#termenAddBtn').addEventListener('click', () => deschideTermen(null));
+
+    $('#termenForm').addEventListener('submit', e => {
+      const titlu = $('#termenTitlu').value.trim();
+      const data = $('#termenData').value;
+      if (!titlu || !data) { e.preventDefault(); return; }
+      const camp = {
+        titlu: titlu, data: data, tip: $('#termenTip').value,
+        subjectId: $('#termenMaterie').value || null,
+        nota: $('#termenNota').value.trim()
+      };
+      if (termenEditat) {
+        Object.assign(termenEditat, camp);
+        toast('Termen actualizat', 'ok');
+      } else {
+        termene().push(Object.assign({ id: uid(), gata: false }, camp));
+        toast('Termen adăugat', 'ok');
+      }
+      termenEditat = null;
+      salveazaTermene();
+    });
+
+    $('#termenDelete').addEventListener('click', async () => {
+      if (!termenEditat) return;
+      const t = termenEditat;
+      const ok = await confirmDialog('Ștergi termenul?', '„' + t.titlu + '” va fi șters.', 'Șterge');
+      if (!ok) return;
+      db.termene = termene().filter(x => x.id !== t.id);
+      termenEditat = null;
+      $('#termenModal').close();
+      salveazaTermene();
+      toast('Termen șters', 'ok', {
+        label: 'Anulează',
+        fn: () => { termene().push(t); salveazaTermene(); }
+      });
     });
 
     $('#aziCard').addEventListener('click', e => {

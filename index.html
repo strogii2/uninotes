@@ -89,6 +89,8 @@ window.addEventListener('unhandledrejection', function (e) {
   <symbol id="i-camera" viewBox="0 0 24 24"><path d="M3 8.5A2 2 0 0 1 5 6.5h2.2l1.3-2h7l1.3 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/></symbol>
   <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="8" r="4.2"/><path d="m11 11 9 9M17 17l2-2M14 14l2-2"/></symbol>
   <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16z"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M6 21V4"/><path d="M6 4.5h11l-2 3.5 2 3.5H6z"/></symbol>
+  <symbol id="i-alarm" viewBox="0 0 24 24"><circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 1.5"/><path d="m4.5 5.5 2-2M19.5 5.5l-2-2"/></symbol>
 </svg>
 
 <!-- ============ APP ============ -->
@@ -134,6 +136,11 @@ window.addEventListener('unhandledrejection', function (e) {
         <svg class="ic"><use href="#i-calendar"></use></svg>
         <span>Orar</span>
         <em class="count" id="cOrar">—</em>
+      </button>
+      <button class="nav__item nav__item--orar" id="termeneBtn">
+        <svg class="ic"><use href="#i-flag"></use></svg>
+        <span>Termene</span>
+        <em class="count" id="cTermene">—</em>
       </button>
     </nav>
 
@@ -426,6 +433,60 @@ window.addEventListener('unhandledrejection', function (e) {
 </dialog>
 
 <input type="file" id="orarFoto" accept="image/*" hidden>
+
+<!-- ============ TERMENE ============ -->
+<dialog class="orar-dlg" id="termeneDlg" aria-label="Termene și examene">
+  <div class="orar">
+    <header class="orar__top">
+      <button class="icon-btn only-mobile" id="termeneClose2" aria-label="Închide termenele">
+        <svg class="ic"><use href="#i-back"></use></svg>
+      </button>
+      <h2 class="orar__title">
+        <svg class="ic"><use href="#i-flag"></use></svg>
+        <span>Termene</span>
+      </h2>
+      <span class="spacer"></span>
+      <button class="btn btn--primary btn--sm" id="termenAddBtn">
+        <svg class="ic"><use href="#i-plus"></use></svg>
+        <span class="btn__text">Termen nou</span>
+      </button>
+      <button class="icon-btn no-mobile" id="termeneClose" aria-label="Închide termenele">
+        <svg class="ic"><use href="#i-x"></use></svg>
+      </button>
+    </header>
+    <div class="orar__body">
+      <div class="termene" id="termeneLista"></div>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="modal" id="termenModal">
+  <form method="dialog" class="modal__body" id="termenForm">
+    <h2 class="modal__title" id="termenModalTitlu">Termen nou</h2>
+    <label class="field">
+      <span>Ce ai de făcut</span>
+      <input id="termenTitlu" required maxlength="80" placeholder="ex. Predare proiect POO">
+    </label>
+    <div class="field-row">
+      <label class="field"><span>Data</span><input id="termenData" type="date" required></label>
+      <label class="field"><span>Tip</span><select id="termenTip"></select></label>
+    </div>
+    <label class="field">
+      <span>Materie <em>(opțional)</em></span>
+      <select id="termenMaterie"></select>
+    </label>
+    <label class="field">
+      <span>Detalii <em>(opțional)</em></span>
+      <input id="termenNota" maxlength="120" placeholder="ex. de predat pe platformă, până la 23:59">
+    </label>
+    <div class="modal__actions">
+      <button type="button" class="btn btn--danger-ghost" id="termenDelete" hidden>Șterge</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn btn--ghost" data-close>Renunță</button>
+      <button type="submit" class="btn btn--primary">Salvează</button>
+    </div>
+  </form>
+</dialog>
 
 <dialog class="modal" id="oraModal">
   <form method="dialog" class="modal__body" id="oraForm">
