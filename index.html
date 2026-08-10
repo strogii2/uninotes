@@ -178,6 +178,10 @@ window.addEventListener('unhandledrejection', function (e) {
           <svg class="ic"><use href="#i-keyboard"></use></svg> Taste
         </button>
       </div>
+      <button class="ghost-btn" id="syncBtn">
+        <svg class="ic"><use href="#i-restore"></use></svg>
+        <span id="syncLabel">Sincronizare</span>
+      </button>
       <button class="ghost-btn" id="dataFolderBtn" hidden>
         <svg class="ic"><use href="#i-folder"></use></svg>
         <span>Folderul cu notițe</span>
@@ -611,6 +615,41 @@ window.addEventListener('unhandledrejection', function (e) {
       <button type="submit" class="btn btn--primary">Salvează</button>
     </div>
   </form>
+</dialog>
+
+<dialog class="modal" id="syncModal">
+  <div class="modal__body">
+    <h2 class="modal__title">Sincronizare între dispozitive</h2>
+    <p class="modal__text">Notițele se duc într-un <strong>gist secret</strong> din contul tău
+      de GitHub — gratuit. Pui același jeton pe telefon și pe calculator, apoi trimiți de pe
+      unul și aduci pe celălalt.</p>
+    <p class="modal__text modal__text--mic"><strong>De știut:</strong> „secret" la GitHub
+      înseamnă nelistat și negăsibil prin căutare, dar <em>nu</em> protejat prin parolă —
+      cine are adresa gistului îl poate deschide. Pentru notițe de facultate e în regulă;
+      nu pune acolo lucruri pe care nu ți-ai permite să le pierzi din vedere.</p>
+    <p class="modal__text modal__text--mic">Ai nevoie de un jeton cu drept pe „gist":
+      <a href="https://github.com/settings/tokens/new?scopes=gist&description=UniNotes"
+         target="_blank" rel="noopener">creează-l aici</a>. Jetonul rămâne doar pe dispozitiv,
+      separat de notițe.</p>
+
+    <label class="field">
+      <span>Jeton GitHub</span>
+      <input id="syncToken" type="password" placeholder="ghp_… sau github_pat_…" autocomplete="off" spellcheck="false">
+    </label>
+    <label class="field">
+      <span>Identificatorul gistului <em>(se completează singur la prima trimitere)</em></span>
+      <input id="syncGist" placeholder="—" autocomplete="off" spellcheck="false">
+    </label>
+
+    <p class="modal__text modal__text--mic" id="syncStare"></p>
+
+    <div class="modal__actions modal__actions--wrap">
+      <button type="button" class="btn btn--ghost" data-close>Închide</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn btn--ghost" id="syncAdu">Adu de pe cont</button>
+      <button type="button" class="btn btn--primary" id="syncTrimite">Trimite pe cont</button>
+    </div>
+  </div>
 </dialog>
 
 <dialog class="modal modal--slim" id="scanBusy">

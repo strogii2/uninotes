@@ -111,6 +111,32 @@ Dacă fișierul ajunge totuși corupt, aplicația îl pune deoparte ca `notite.j
 
   **Cheia rămâne doar pe dispozitivul tău**: stă separat de notițe, deci nu intră în copiile
   de siguranță exportate. Oricum ar fi citită poza, vezi lista înainte să se salveze ceva.
+- **Notiță pornită din orar** — din cardul „Astăzi", butonul de lângă o oră creează o notiță
+  cu materia, tipul, numărul de ordine și data deja completate („Curs 4 — Analiză Matematică"),
+  iar cursorul sare direct în text. Dacă ora nu e legată de nicio materie, materia se creează.
+- **Săptămâni pare și impare** — spui o dată „săptămâna asta e pară", iar de acolo încolo
+  paritatea se calculează singură. Orele care nu au loc săptămâna asta nu mai apar la
+  „Astăzi" și nu mai declanșează „acum"; în grilă rămân vizibile, dar stinse. Setarea apare
+  doar dacă orarul chiar are ore alternative.
+- **Termene și examene**, cu buton propriu în meniu: examene, colocvii, parțiale, predări.
+  Lista e grupată în restante / astăzi / zilele următoare / mai târziu / făcute, insigna arată
+  câte zile mai sunt până la cel mai apropiat, iar anunțul de dimineață pomenește ce bate la ușă.
+- **Poze în notițe** — butonul cu aparat foto din bara de formatare inserează o fotografie
+  (tabla, un slide); pe telefon alegi între cameră și galerie. Pozele sunt micșorate la
+  1600 px, intră în copiile de siguranță și apar și la printare. În browser stau în
+  IndexedDB, iar în aplicația de Windows ca fișiere în `Notite UniNotes\imagini`.
+- **Repetiție pentru examen** — orice linie de forma `întrebare :: răspuns` din notițe devine
+  o întrebare de repetat, la intervale care cresc (1, 3, 7, 16, 35, 75 de zile). O întrebare
+  greșită revine peste zece minute și pleacă înapoi de la o zi. Spațiile din jurul lui `::`
+  contează, ca `std::vector` din notițele de programare să nu devină întrebare.
+- **Sincronizare între telefon și calculator** — printr-un gist secret din contul tău de
+  GitHub: pui același jeton pe ambele, trimiți de pe unul și aduci pe celălalt. Trimiterea și
+  aducerea sunt manuale, cu confirmare care îți spune câte notițe înlocuiești, și cu
+  avertisment dacă pe cont e o versiune mai nouă decât ultima pe care ai văzut-o.
+
+  „Secret" la GitHub înseamnă nelistat și negăsibil prin căutare, dar **nu** protejat prin
+  parolă: cine are adresa gistului îl poate deschide. Pentru notițe de facultate e în regulă;
+  pentru altceva, mai bine nu.
 - **Fixare** (notița stă sus) și **favorite**.
 - **Arhivă** pentru notițele terminate, ca să nu aglomereze lista.
 - **Mod întunecat implicit**, pentru sesiunile de învățat de seara. Dacă îl schimbi pe
@@ -161,9 +187,21 @@ vrei; atunci notițele se salvează în browser, nu în fișier.
 
 ## Cum funcționează pe dinăuntru
 
-Orarul stă în același fișier cu notițele, sub cheia `orar`. Fișierele făcute înainte ca
-orarul să existe nu au cheia asta — se adaugă goală la citire, deci copiile vechi se
-deschid normal.
+Orarul, termenele și starea repetițiilor stau în același fișier cu notițele, sub cheile
+`orar`, `termene` și `repetitii`. Fișierele făcute înainte ca ele să existe nu le au — se
+adaugă goale la citire, deci copiile vechi se deschid normal. La fel, intrările cu tipuri
+greșite sau valori imposibile sunt aruncate la încărcare, ca un fișier editat de mână să nu
+împiedice pornirea.
+
+Pozele nu stau în fișierul cu notițe: sunt prea mari. Un singur depozit cu `pune`/`ia`/
+`sterge` alege singur unde scrie — IndexedDB în browser, fișiere în `imagini` pe desktop —
+deci restul codului nu știe unde sunt. În Markdown apar ca `![poză](uninotes:<id>)`, iar
+sursa se completează după randare, fiindcă citirea e asincronă; la printare o așteptăm
+explicit, altfel pozele ar ieși goale pe hârtie. La exportul unei notițe ca `.md` poza e
+inclusă în fișier, fiindcă `uninotes:...` n-are niciun înțeles în afara aplicației.
+
+Repetiția își ține starea pe amprenta întrebării, nu pe poziția liniei în text: așa
+supraviețuiește editării și rearanjării notiței.
 
 Citirea pe dispozitiv nu trimite poza nicăieri. Tesseract dă înapoi fiecare cuvânt împreună
 cu poziția lui în imagine — textul citit „la rând" e inutilizabil pentru un tabel, fiindcă

@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 7;            // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 8;            // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -2990,6 +2990,194 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   }
 
   /* ==========================================================
+     SINCRONIZARE ÎNTRE DISPOZITIVE
+     Printr-un gist secret din contul utilizatorului: fără server de ținut,
+     fără cont nou, gratuit. Trimiterea și aducerea sunt manuale — o
+     sincronizare automată care greșește ar șterge notițe, iar asta nu se repară.
+     ========================================================== */
+  const CHEIE_JETON = 'uninotes.sync-jeton';
+  const CHEIE_GIST = 'uninotes.sync-gist';
+  const CHEIE_VAZUT = 'uninotes.sync-vazut';
+  const FISIER_GIST = 'uninotes.json';
+
+  const localGet = k => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
+  const localSet = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) { /* mod privat */ } };
+
+  function anteteGitHub(jeton) {
+    return {
+      'accept': 'application/vnd.github+json',
+      'authorization': 'Bearer ' + jeton,
+      'content-type': 'application/json',
+      'x-github-api-version': '2022-11-28'
+    };
+  }
+
+  function mesajGitHub(status) {
+    if (status === 401) return 'Jetonul nu e valabil sau a expirat.';
+    if (status === 403) return 'Jetonul nu are dreptul „gist" sau ai atins limita de cereri.';
+    if (status === 404) return 'Nu găsesc gistul. Verifică identificatorul sau trimite o dată de pe dispozitivul cu date.';
+    if (status === 422) return 'GitHub a refuzat conținutul — probabil e prea mare.';
+    if (status >= 500) return 'GitHub e ocupat acum. Mai încearcă peste puțin.';
+    return 'Sincronizarea a eșuat (cod ' + status + ').';
+  }
+
+  async function pachetDeTrimis() {
+    const pack = { tip: 'uninotes-sync', versiune: 1, actualizat: now(), db: db, poze: {} };
+    for (const id of pozeFolosite()) {
+      const url = await poze.ia(id);
+      if (url) pack.poze[id] = url;
+    }
+    return pack;
+  }
+
+  function starSync() {
+    const el = $('#syncStare');
+    if (!el) return;
+    const gist = localGet(CHEIE_GIST);
+    const vazut = +localGet(CHEIE_VAZUT) || 0;
+    el.textContent = !localGet(CHEIE_JETON)
+      ? 'Nesetat. Pune jetonul, apoi trimite o dată de pe dispozitivul care are datele.'
+      : (gist
+        ? 'Legat de gistul ' + gist.slice(0, 8) + '… ' +
+          (vazut ? '· ultima sincronizare: ' + fmtFull.format(new Date(vazut)) : '· încă nesincronizat')
+        : 'Jeton salvat. La prima trimitere se creează gistul.');
+    const l = $('#syncLabel');
+    if (l) l.textContent = localGet(CHEIE_JETON) ? 'Sincronizare' : 'Sincronizare (nesetat)';
+  }
+
+  function deschideSync() {
+    $('#syncToken').value = localGet(CHEIE_JETON);
+    $('#syncGist').value = localGet(CHEIE_GIST);
+    starSync();
+    $('#syncModal').showModal();
+  }
+
+  function salveazaSetariSync() {
+    localSet(CHEIE_JETON, $('#syncToken').value.trim());
+    localSet(CHEIE_GIST, $('#syncGist').value.trim());
+  }
+
+  async function citesteGist(jeton, gist) {
+    const r = await fetch('https://api.github.com/gists/' + encodeURIComponent(gist),
+      { headers: anteteGitHub(jeton) });
+    if (!r.ok) throw new Error(mesajGitHub(r.status));
+    const info = await r.json();
+    const f = info.files && info.files[FISIER_GIST];
+    if (!f) throw new Error('Gistul nu conține ' + FISIER_GIST + '.');
+    // peste ~1 MB GitHub trunchiază conținutul și dă doar adresa brută
+    const text = f.truncated ? await (await fetch(f.raw_url)).text() : f.content;
+    let pack;
+    try { pack = JSON.parse(text); }
+    catch (e) { throw new Error('Conținutul de pe cont nu se poate citi.'); }
+    if (!pack || !pack.db || !Array.isArray(pack.db.notes)) throw new Error('Conținutul de pe cont nu e o copie UniNotes.');
+    return pack;
+  }
+
+  async function trimiteSync() {
+    salveazaSetariSync();
+    const jeton = localGet(CHEIE_JETON);
+    if (!jeton) { toast('Pune întâi jetonul.', 'err'); return; }
+    let gist = localGet(CHEIE_GIST);
+
+    $('#scanBusyText').textContent = 'Trimit notițele pe cont…';
+    $('#scanBusy').showModal();
+    try {
+      // dacă pe cont e ceva mai nou decât ce am văzut noi, întrebăm înainte să suprascriem
+      if (gist) {
+        let deja = null;
+        try { deja = await citesteGist(jeton, gist); } catch (e) { deja = null; }
+        const vazut = +localGet(CHEIE_VAZUT) || 0;
+        if (deja && deja.actualizat > vazut) {
+          $('#scanBusy').close();
+          const ok = await confirmDialog('Pe cont e o versiune mai nouă',
+            'A fost trimisă la ' + fmtFull.format(new Date(deja.actualizat)) +
+            ', de pe alt dispozitiv, și are ' + deja.db.notes.length + ' notițe. ' +
+            'Dacă trimiți acum, o înlocuiești cu cele ' + db.notes.length + ' de aici.',
+            'Înlocuiește');
+          if (!ok) return;
+          $('#scanBusy').showModal();
+        }
+      }
+
+      const pack = await pachetDeTrimis();
+      const corp = JSON.stringify({
+        description: 'UniNotes — copia notițelor (secret)',
+        public: false,
+        files: { [FISIER_GIST]: { content: JSON.stringify(pack) } }
+      });
+
+      const r = gist
+        ? await fetch('https://api.github.com/gists/' + encodeURIComponent(gist),
+            { method: 'PATCH', headers: anteteGitHub(jeton), body: corp })
+        : await fetch('https://api.github.com/gists',
+            { method: 'POST', headers: anteteGitHub(jeton), body: corp });
+      if (!r.ok) throw new Error(mesajGitHub(r.status));
+
+      const info = await r.json();
+      if (info && info.id) { gist = info.id; localSet(CHEIE_GIST, gist); $('#syncGist').value = gist; }
+      localSet(CHEIE_VAZUT, String(pack.actualizat));
+      starSync();
+      const nrPoze = Object.keys(pack.poze).length;
+      toast('Trimis pe cont: ' + db.notes.length + ' notițe' +
+            (nrPoze ? ' și ' + nrPoze + (nrPoze === 1 ? ' poză' : ' poze') : ''), 'ok');
+    } catch (e) {
+      toast(e instanceof TypeError ? 'Nu am reușit să ajung la GitHub. Verifică internetul.'
+                                  : (e.message || 'Trimiterea a eșuat.'), 'err', null, 6000);
+    } finally {
+      if ($('#scanBusy').open) $('#scanBusy').close();
+    }
+  }
+
+  async function aduSync() {
+    salveazaSetariSync();
+    const jeton = localGet(CHEIE_JETON), gist = localGet(CHEIE_GIST);
+    if (!jeton) { toast('Pune întâi jetonul.', 'err'); return; }
+    if (!gist) { toast('Nu știu de unde să aduc: trimite o dată de pe dispozitivul cu date.', 'err', null, 6000); return; }
+
+    $('#scanBusyText').textContent = 'Aduc notițele de pe cont…';
+    $('#scanBusy').showModal();
+    let pack;
+    try {
+      pack = await citesteGist(jeton, gist);
+    } catch (e) {
+      toast(e instanceof TypeError ? 'Nu am reușit să ajung la GitHub. Verifică internetul.'
+                                  : (e.message || 'Aducerea a eșuat.'), 'err', null, 6000);
+      return;
+    } finally {
+      if ($('#scanBusy').open) $('#scanBusy').close();
+    }
+
+    const ok = await confirmDialog('Înlocuiești ce ai pe dispozitiv?',
+      'Cele ' + db.notes.length + ' notițe de aici vor fi înlocuite cu ' + pack.db.notes.length +
+      ' de pe cont, trimise la ' + fmtFull.format(new Date(pack.actualizat || now())) +
+      '. Fă întâi un backup dacă ai scris ceva aici între timp.',
+      'Adu și înlocuiește');
+    if (!ok) return;
+
+    const curatat = normalize(pack.db);
+    if (!curatat) { toast('Datele de pe cont nu se pot citi.', 'err'); return; }
+    db = curatat;
+    ui.activeId = null;
+    ui.filter = { type: 'all', subjectId: null, tag: null };
+
+    if (pack.poze && typeof pack.poze === 'object') {
+      for (const id of Object.keys(pack.poze)) {
+        if (/^[A-Za-z0-9_-]+$/.test(id) && /^data:image\//.test(pack.poze[id])) {
+          await poze.pune(id, pack.poze[id]);
+        }
+      }
+      urlPoze.clear();
+    }
+
+    persist();
+    localSet(CHEIE_VAZUT, String(pack.actualizat || now()));
+    applyTheme(db.settings.themeSetByUser ? (db.settings.theme || 'dark') : 'dark');
+    starSync();
+    renderSidebar(); renderList(); renderEditor();
+    toast('Adus de pe cont: ' + db.notes.length + ' notițe', 'ok');
+  }
+
+  /* ==========================================================
      EVENIMENTE
      ========================================================== */
   function bind() {
@@ -3388,6 +3576,12 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     });
     $('#helpBtn').addEventListener('click', () => $('#helpModal').showModal());
 
+    $('#syncBtn').addEventListener('click', deschideSync);
+    $('#syncTrimite').addEventListener('click', trimiteSync);
+    $('#syncAdu').addEventListener('click', aduSync);
+    $('#syncToken').addEventListener('change', () => { salveazaSetariSync(); starSync(); });
+    $('#syncGist').addEventListener('change', () => { salveazaSetariSync(); starSync(); });
+
     // --- modale ---
     $$('[data-close]').forEach(b =>
       b.addEventListener('click', () => b.closest('dialog').close()));
@@ -3499,6 +3693,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     showPane(ui.activeId && window.innerWidth > 860 ? 'editor' : 'list');
 
     $('#versiune').textContent = 'versiunea ' + VERSIUNE;
+    starSync();
 
     // „acum” / „urmează” din bara laterală trebuie să rămână adevărate
     setInterval(actualizeazaInsigna, 60000);
