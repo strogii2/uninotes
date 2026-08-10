@@ -30,7 +30,7 @@ def probe(window):
             var t = document.querySelector('#titleInput');
             t.value = 'Proba de scriere pe disc';
             t.dispatchEvent(new Event('input', {bubbles:true}));
-            var c = document.querySelector('#contentInput');
+            var c = document.querySelector('#editorFlux > textarea');
             c.value = '- [ ] verificat salvarea\\n\\nText cu diacritice: ăâîșț';
             c.dispatchEvent(new Event('input', {bubbles:true}));
             'ok'

@@ -307,8 +307,9 @@ window.addEventListener('unhandledrejection', function (e) {
         </div>
         <input type="file" id="pozaInput" accept="image/*" hidden>
 
-        <textarea class="content-input" id="contentInput" spellcheck="true"
-          placeholder="Scrie aici… Markdown funcționează: # titlu, **îngroșat**, - listă, - [ ] de făcut, `cod`, > citat"></textarea>
+        <!-- Textul stă în casete obișnuite, iar pozele și desenele între ele,
+             exact unde au fost puse: se văd în timp ce scrii. -->
+        <div class="flux" id="editorFlux"></div>
 
         <article class="preview md" id="previewPane" hidden></article>
       </div>
