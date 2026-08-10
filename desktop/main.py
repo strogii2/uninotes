@@ -82,7 +82,13 @@ class Api:
     """Puntea dintre interfața web și fișierele de pe disc."""
 
     def __init__(self) -> None:
-        self.window = None
+        # Numele începe cu „_" intenționat: pywebview parcurge atributele publice ale
+        # acestui obiect ca să construiască puntea din JavaScript și, dacă găsește un
+        # atribut care nu e funcție, intră recursiv în el. Cu fereastra expusă public,
+        # cobora prin tot obiectul .NET al ferestrei, umplea puntea cu mii de intrări
+        # și, în varianta compilată, obiectul injectat ajungea trunchiat — dispăreau
+        # metode reale (save_data), iar aplicația nu mai pornea.
+        self._window = None
 
     # ---------- date ----------
     def load_data(self):
@@ -113,7 +119,7 @@ class Api:
     # ---------- fișiere ----------
     def save_file(self, suggested_name, content):
         downloads = Path.home() / "Downloads"
-        result = self.window.create_file_dialog(
+        result = self._window.create_file_dialog(
             webview.SAVE_DIALOG,
             directory=str(downloads if downloads.is_dir() else Path.home()),
             save_filename=suggested_name,
@@ -128,7 +134,7 @@ class Api:
             return None
 
     def open_file(self):
-        result = self.window.create_file_dialog(
+        result = self._window.create_file_dialog(
             webview.OPEN_DIALOG,
             allow_multiple=False,
             file_types=("Backup UniNotes (*.json)", "Toate fișierele (*.*)"),
@@ -162,7 +168,7 @@ class Api:
         try:
             from System import Action                       # oferit de pythonnet
 
-            control = self.window.native.browser.webview
+            control = self._window.native.browser.webview
             rezultat = []
 
             def arata():
@@ -216,7 +222,7 @@ def main() -> None:
         background_color="#F5F7FB",
         text_select=True,
     )
-    api.window = window
+    api._window = window
 
     webview.start(
         gui="edgechromium",

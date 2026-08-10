@@ -28,7 +28,7 @@ api = app.Api()
 
 # --- export .md ---
 tinta = tmp / "notita.md"
-api.window = FereastraFalsa(tinta)
+api._window = FereastraFalsa(tinta)
 continut = "# Titlu cu diacritice\n\n- [ ] ceva de făcut\n\nȘțîâă"
 cale = api.save_file("notita.md", continut)
 rezultate["export_cale_intoarsa"] = cale is not None
@@ -38,7 +38,7 @@ rezultate["export_continut_identic"] = tinta.read_text(encoding="utf-8") == cont
 sursa = tmp / "backup.json"
 sursa.write_text(json.dumps({"notes": [{"title": "Notiță importată"}]}, ensure_ascii=False),
                  encoding="utf-8")
-api.window = FereastraFalsa(sursa)
+api._window = FereastraFalsa(sursa)
 adus = api.open_file()
 rezultate["import_nume"] = adus["name"]
 rezultate["import_titlu"] = json.loads(adus["content"])["notes"][0]["title"]
@@ -59,7 +59,7 @@ if deschise:
     rezultate["printare_contine_corpul"] = "<p>corp</p>" in html
 
 # --- scriere/citire date, cu fișier stricat ---
-api.window = None
+api._window = None
 rezultate["salvare_date"] = api.save_data({"notes": [], "subjects": [], "settings": {}})["ok"]
 app.DATA_FILE.write_text("{ asta nu e json valid", encoding="utf-8")
 rezultate["json_stricat_nu_arunca"] = api.load_data() is None

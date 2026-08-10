@@ -8,6 +8,18 @@
 <meta name="theme-color" content="#0B1120">
 <meta name="color-scheme" content="dark light">
 
+<!-- prindem erorile de pornire, ca să poată fi văzute din afară -->
+<script>
+window.__eroare = '';
+window.addEventListener('error', function (e) {
+  window.__eroare = 'eroare: ' + (e.message || '') + ' @ ' + (e.filename || '') + ':' + (e.lineno || '');
+});
+window.addEventListener('unhandledrejection', function (e) {
+  var m = e.reason && (e.reason.message || e.reason.toString ? e.reason.toString() : e.reason);
+  window.__eroare = 'promisiune respinsă: ' + m;
+});
+</script>
+
 <!-- aplicăm tema aleasă înainte de prima desenare, ca să nu clipească -->
 <script>
 (function () {

@@ -101,7 +101,7 @@ def run():
         url="http://127.0.0.1:%d/index.html?desktop=1" % app.start_local_server(),
         js_api=api, width=1200, height=800,
     )
-    api.window = window
+    api._window = window
     opreste_dupa(90, "REZULTAT=TIMP_EXPIRAT")
     webview.start(probe, window, gui="edgechromium", private_mode=False,
                   storage_path=str(app.DATA_DIR / ".fereastra-test"))

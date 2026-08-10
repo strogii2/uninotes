@@ -70,7 +70,7 @@ def run():
         height=860,
         background_color="#F5F7FB",
     )
-    api.window = window
+    api._window = window
     webview.start(probe, window, gui="edgechromium", private_mode=False,
                   storage_path=str(app.DATA_DIR / ".fereastra"))
 
