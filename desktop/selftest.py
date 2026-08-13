@@ -8,6 +8,12 @@ import tempfile
 import time
 from pathlib import Path
 
+import sys
+
+# Consola Windows nu scrie diacritice implicit, iar rezultatul testului
+# s-ar pierde tocmai cand ai nevoie de el.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 import webview
 
 import main as app

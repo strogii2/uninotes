@@ -1065,20 +1065,75 @@ body{-webkit-tap-highlight-color:transparent}
   transition:transform var(--t) var(--ease-out-back),box-shadow var(--t) var(--ease);
 }
 .desen-culoare:hover{transform:scale(1.12)}
-.desen-culoare[aria-checked="true"]{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--fg-soft)}
-.desen-grosime{
-  width:30px;height:30px;border-radius:var(--r-sm);display:grid;place-items:center;
-  border:1px solid var(--border);background:var(--surface-2);
-  transition:border-color var(--t) var(--ease),background var(--t) var(--ease);
-}
-.desen-grosime span{display:block;border-radius:var(--r-full);background:var(--fg-soft)}
-.desen-grosime[aria-checked="true"]{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 14%,transparent)}
-.desen-grosime[aria-checked="true"] span{background:var(--primary)}
-#desenRadiera[aria-pressed="true"]{background:color-mix(in srgb,var(--primary) 16%,transparent);color:var(--primary)}
+.desen-culoare.is-active{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--fg-soft);transform:scale(1.12)}
 #desenInapoi:disabled,#desenSterge:disabled{opacity:.35;pointer-events:none}
 
+/* ---- pensule ---- */
+.desen-pensule{display:flex;align-items:center;gap:4px}
+.desen-pensula{
+  width:38px;height:38px;border-radius:var(--r-md);display:grid;place-items:center;
+  color:var(--fg-muted);border:1px solid transparent;
+  transition:background var(--t) var(--ease),color var(--t) var(--ease),
+             border-color var(--t) var(--ease);
+}
+.desen-pensula:hover{background:var(--muted);color:var(--fg)}
+.desen-pensula.is-active{
+  background:color-mix(in srgb,var(--primary) 15%,transparent);
+  border-color:color-mix(in srgb,var(--primary) 45%,transparent);
+  color:var(--primary);
+}
+
+/* ---- corpul ferestrei: glisor pe margine, pânza în rest ---- */
+.desen-corp{flex:1;display:flex;min-height:0;min-width:0}
+.desen-marime{
+  flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:var(--sp-3);width:58px;padding:var(--sp-3) 0;
+}
+.desen-bulina{
+  display:block;border-radius:var(--r-full);background:var(--fg);flex:none;
+  border:1px solid color-mix(in srgb,var(--fg) 30%,transparent);
+  transition:width var(--t) var(--ease),height var(--t) var(--ease),background var(--t) var(--ease);
+}
+/* Glisorul e orizontal și îl întoarcem: un range vertical nativ nu se poartă
+   la fel peste tot, iar rotirea merge sigur și cu degetul. Pista are înălțime
+   fixă fiindcă elementul rotit ocupă tot cutia lui nerotită. */
+.desen-marime__pista{position:relative;display:block;width:38px;height:210px;flex:none}
+.desen-marime__pista input[type="range"]{
+  position:absolute;left:50%;top:50%;width:210px;margin:0;
+  transform:translate(-50%,-50%) rotate(-90deg);
+  accent-color:var(--primary);
+}
+
+/* ---- paleta de jos ---- */
+.desen-bara-jos{
+  flex:none;display:flex;align-items:center;gap:var(--sp-3);
+  padding:var(--sp-3) var(--sp-4);
+  padding-bottom:calc(var(--sp-3) + env(safe-area-inset-bottom));
+  border-top:1px solid var(--border);background:var(--surface);
+}
+.desen-bara-jos .desen-culori{
+  flex:1;flex-wrap:nowrap;overflow-x:auto;gap:9px;padding:3px 1px;
+  scrollbar-width:none;
+}
+.desen-bara-jos .desen-culori::-webkit-scrollbar{display:none}
+.desen-bara-jos .desen-culoare{width:30px;height:30px;flex:none}
+.desen-oricare{
+  flex:none;width:34px;height:34px;border-radius:var(--r-full);overflow:hidden;
+  border:1px solid var(--border-strong,var(--border));display:grid;place-items:center;
+  cursor:pointer;position:relative;
+  background:conic-gradient(#DC2626,#CA8A04,#059669,#0EA5E9,#2563EB,#7C3AED,#DB2777,#DC2626);
+}
+.desen-oricare input{
+  position:absolute;inset:-4px;width:calc(100% + 8px);height:calc(100% + 8px);
+  opacity:0;cursor:pointer;padding:0;border:0;
+}
+
 .desen-panza{
-  flex:1;position:relative;min-height:0;
+  /* min-width:0 nu e de prisos: fără el, nivelul ăsta refuză să coboare sub
+     mărimea proprie a pânzei (adică sub numărul ei de pixeli) și împinge
+     desenul în afara ecranului pe telefon. Regula e valabilă la fiecare nivel
+     dintre marginea ecranului și pânză, nu doar la pânză. */
+  flex:1;position:relative;min-height:0;min-width:0;
   padding:var(--sp-3);
   padding-bottom:calc(var(--sp-3) + env(safe-area-inset-bottom));
   display:flex;
@@ -1103,8 +1158,12 @@ body{-webkit-tap-highlight-color:transparent}
 @media (max-width:860px){
   .desen__top{gap:var(--sp-2);padding-left:var(--sp-2);padding-right:var(--sp-2)}
   .desen-unelte{gap:6px}
-  .desen-culoare{width:30px;height:30px}
-  .desen-grosime{width:34px;height:34px}
+  .desen-pensula{width:36px;height:36px}
+  .desen-marime{width:46px;gap:var(--sp-2)}
+  .desen-marime__pista{width:32px;height:170px}
+  .desen-marime__pista input[type="range"]{width:170px}
+  .desen-bara-jos{padding:var(--sp-2) var(--sp-3);gap:var(--sp-2)}
+  .desen-bara-jos .desen-culoare{width:32px;height:32px}
   .desen-panza{padding:var(--sp-2)}
 }
 

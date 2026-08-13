@@ -464,12 +464,9 @@ window.addEventListener('unhandledrejection', function (e) {
         <span>Desen</span>
       </h2>
 
+      <div class="desen-pensule" id="desenPensule" role="radiogroup" aria-label="Pensulă"></div>
+
       <div class="desen-unelte" role="toolbar" aria-label="Unelte de desen">
-        <div class="desen-culori" id="desenCulori" role="radiogroup" aria-label="Culoare"></div>
-        <div class="desen-grosimi" id="desenGrosimi" role="radiogroup" aria-label="Grosime"></div>
-        <button class="icon-btn" id="desenRadiera" aria-pressed="false" title="Radieră" aria-label="Radieră">
-          <svg class="ic" viewBox="0 0 24 24"><path d="m6 18 9-9 5 5-4 4H8z"/><path d="M4 21h16"/></svg>
-        </button>
         <button class="icon-btn" id="desenInapoi" title="Anulează ultima linie" aria-label="Anulează ultima linie">
           <svg class="ic"><use href="#i-restore"></use></svg>
         </button>
@@ -488,9 +485,27 @@ window.addEventListener('unhandledrejection', function (e) {
       </button>
     </header>
 
-    <div class="desen-panza" id="desenPanza">
-      <canvas id="desenCanvas"></canvas>
-      <p class="desen-sfat" id="desenSfat">Desenează cu degetul, cu mouse-ul sau cu creionul.</p>
+    <div class="desen-corp">
+      <!-- glisorul de grosime stă pe margine, ca degetul să nu treacă peste desen -->
+      <div class="desen-marime">
+        <span class="desen-bulina" id="desenBulina" aria-hidden="true"></span>
+        <span class="desen-marime__pista">
+          <input type="range" id="desenGrosime" min="1" max="48" step="1" value="6"
+                 aria-label="Grosimea liniei">
+        </span>
+      </div>
+
+      <div class="desen-panza" id="desenPanza">
+        <canvas id="desenCanvas"></canvas>
+        <p class="desen-sfat" id="desenSfat">Desenează cu degetul, cu mouse-ul sau cu creionul.</p>
+      </div>
+    </div>
+
+    <div class="desen-bara-jos">
+      <div class="desen-culori" id="desenCulori" role="radiogroup" aria-label="Culoare"></div>
+      <label class="desen-oricare" title="Orice culoare">
+        <input type="color" id="desenOricare" value="#2563EB" aria-label="Orice culoare">
+      </label>
     </div>
   </div>
 </dialog>

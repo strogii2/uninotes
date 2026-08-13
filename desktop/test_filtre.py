@@ -9,6 +9,12 @@ import tempfile
 import time
 from pathlib import Path
 
+import sys
+
+# Consola Windows nu scrie diacritice implicit, iar rezultatul testului
+# s-ar pierde tocmai cand ai nevoie de el.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 import webview
 
 import main as app
@@ -35,6 +41,22 @@ def citeste(v):
     return json.loads(v) if isinstance(v, (str, bytes, bytearray)) else v
 
 
+def asteapta_aplicatia(window, secunde=40):
+    """
+    O pauză fixă nu ajunge: pe o mașină ocupată fereastra poate fi încă goală,
+    iar atunci toate întrebările se întorc fără răspuns și testul pare căzut.
+    Așteptăm până apar chiar notițele.
+    """
+    for _ in range(int(secunde * 2)):
+        try:
+            if window.evaluate_js("document.querySelectorAll('.note-card').length") :
+                return True
+        except Exception:                                        # noqa: BLE001
+            pass
+        time.sleep(0.5)
+    return False
+
+
 def apasa_materia(window, nume):
     return window.evaluate_js("""
         (function () {
@@ -53,7 +75,7 @@ def apasa_materia(window, nume):
 def probe(window):
     out = {}
     try:
-        time.sleep(5)
+        out["aplicatia_a_pornit"] = asteapta_aplicatia(window)
         out["materii_in_bara"] = window.evaluate_js(
             "Array.prototype.slice.call(document.querySelectorAll('.subject__name'))"
             ".map(function (n) { return n.textContent; })")
