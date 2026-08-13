@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 13;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 14;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -482,8 +482,28 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
      scoatere din listă, iar desenul se poate redesena curat la orice mărime
      (rotirea telefonului nu-l mai strică).
      ========================================================== */
-  const CULORI_DESEN = ['#0F172A', '#2563EB', '#DC2626', '#059669', '#CA8A04', '#7C3AED'];
-  const GROSIMI_DESEN = [2, 4, 8, 16];
+  const CULORI_DESEN = ['#0F172A', '#64748B', '#2563EB', '#0EA5E9', '#059669',
+                        '#CA8A04', '#EA580C', '#DC2626', '#DB2777', '#7C3AED'];
+
+  /* Patru pensule, ca la aplicațiile de poze: fiecare lasă altă urmă. */
+  const PENSULE = [
+    { id: 'pix',     nume: 'Pix',     desc: 'linie plină, obișnuită' },
+    { id: 'marker',  nume: 'Marker',  desc: 'lat și transparent, ca textmarkerul' },
+    { id: 'neon',    nume: 'Neon',    desc: 'linie cu halou în jur' },
+    { id: 'radiera', nume: 'Radieră', desc: 'șterge ce ai desenat' }
+  ];
+  const ICOANE_PENSULA = {
+    pix: '<svg class="ic"><use href="#i-pen"></use></svg>',
+    marker: '<svg class="ic" viewBox="0 0 24 24">' +
+            '<path d="M4 20h5l10-10a2.2 2.2 0 0 0-3.1-3.1L6 17v3z"/>' +
+            '<path d="M14 7.5 16.5 10"/><path d="M3 21h18"/></svg>',
+    neon: '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.4"/>' +
+          '<path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2"/>' +
+          '<path d="M5.6 5.6 7.2 7.2M16.8 16.8l1.6 1.6M18.4 5.6 16.8 7.2M7.2 16.8 5.6 18.4"/></svg>',
+    radiera: '<svg class="ic" viewBox="0 0 24 24"><path d="m6 18 9-9 5 5-4 4H8z"/>' +
+             '<path d="M4 21h16"/></svg>'
+  };
+  const GROSIME_MIN = 1, GROSIME_MAX = 48;
   const FUNDAL_DESEN = '#FFFFFF';
   const MAX_LATURA_DESEN = 1800;
 
@@ -494,42 +514,82 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     return c ? c.getContext('2d') : null;
   }
 
+  /** Fiecare pensulă își pune propriile setări pe pânză. */
+  function stilPensula(g, l) {
+    g.globalAlpha = 1;
+    g.shadowBlur = 0;
+    g.shadowColor = 'transparent';
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    g.strokeStyle = l.culoare;
+    g.fillStyle = l.culoare;
+    g.lineWidth = Math.max(1, l.grosime);
+
+    if (l.tip === 'marker') {
+      // transparent și cu capăt drept: se suprapune ca un textmarker adevărat
+      g.globalAlpha = 0.3;
+      g.lineCap = 'butt';
+      g.lineJoin = 'bevel';
+      g.lineWidth = Math.max(6, l.grosime * 2.4);
+    } else if (l.tip === 'neon') {
+      g.shadowColor = l.culoare;
+      g.shadowBlur = Math.max(8, l.grosime * 1.6);
+    } else if (l.tip === 'radiera') {
+      // hârtia e albă, deci a șterge înseamnă a picta cu alb
+      g.strokeStyle = FUNDAL_DESEN;
+      g.fillStyle = FUNDAL_DESEN;
+      g.lineWidth = Math.max(14, l.grosime * 2);
+    }
+  }
+
+  function traseaza(g, l) {
+    if (l.puncte.length === 1) {
+      // un singur punct: un bulin, altfel n-ar apărea nimic
+      const p = l.puncte[0];
+      g.beginPath();
+      g.arc(p.x, p.y, Math.max(0.5, g.lineWidth / 2), 0, Math.PI * 2);
+      g.fill();
+      return;
+    }
+    g.beginPath();
+    g.moveTo(l.puncte[0].x, l.puncte[0].y);
+    for (let i = 1; i < l.puncte.length - 1; i++) {
+      const a = l.puncte[i], b = l.puncte[i + 1];
+      g.quadraticCurveTo(a.x, a.y, (a.x + b.x) / 2, (a.y + b.y) / 2);
+    }
+    const ultim = l.puncte[l.puncte.length - 1];
+    g.lineTo(ultim.x, ultim.y);
+    g.stroke();
+  }
+
   function redeseneaza() {
     const c = $('#desenCanvas'), g = ctxDesen();
     if (!c || !g || !desen) return;
     g.setTransform(desen.dpr, 0, 0, desen.dpr, 0, 0);
+    g.globalAlpha = 1;
+    g.shadowBlur = 0;
     g.fillStyle = FUNDAL_DESEN;
     g.fillRect(0, 0, c.width / desen.dpr, c.height / desen.dpr);
-    g.lineCap = 'round';
-    g.lineJoin = 'round';
 
     desen.linii.forEach(l => {
       if (!l.puncte.length) return;
-      g.strokeStyle = l.culoare;
-      g.lineWidth = l.grosime;
-      g.beginPath();
-      if (l.puncte.length === 1) {
-        // un singur punct: un bulin, altfel n-ar apărea nimic
-        const p = l.puncte[0];
-        g.arc(p.x, p.y, l.grosime / 2, 0, Math.PI * 2);
-        g.fillStyle = l.culoare;
-        g.fill();
-        return;
+      stilPensula(g, l);
+      traseaza(g, l);
+      if (l.tip === 'neon') {
+        // a doua trecere, subțire și fără halou: miezul aprins din mijloc
+        g.shadowBlur = 0;
+        g.lineWidth = Math.max(1, l.grosime * 0.55);
+        traseaza(g, l);
       }
-      g.moveTo(l.puncte[0].x, l.puncte[0].y);
-      for (let i = 1; i < l.puncte.length - 1; i++) {
-        const a = l.puncte[i], b = l.puncte[i + 1];
-        g.quadraticCurveTo(a.x, a.y, (a.x + b.x) / 2, (a.y + b.y) / 2);
-      }
-      const ultim = l.puncte[l.puncte.length - 1];
-      g.lineTo(ultim.x, ultim.y);
-      g.stroke();
     });
+    g.globalAlpha = 1;
+    g.shadowBlur = 0;
 
     const sfat = $('#desenSfat');
     if (sfat) sfat.hidden = desen.linii.length > 0;
-    $('#desenInapoi').disabled = !desen.linii.length;
-    $('#desenSterge').disabled = !desen.linii.length;
+    const inapoi = $('#desenInapoi'), sterge = $('#desenSterge');
+    if (inapoi) inapoi.disabled = !desen.linii.length;
+    if (sterge) sterge.disabled = !desen.linii.length;
   }
 
   /**
@@ -551,41 +611,71 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     redeseneaza();
   }
 
+  /** Bulina de lângă glisor arată din ce iese linia: mărimea și culoarea ei. */
+  function actualizeazaBulina() {
+    const b = $('#desenBulina');
+    if (!b || !desen) return;
+    const d = Math.round(Math.max(5, Math.min(34, desen.grosime * 0.8 + 5)));
+    b.style.width = d + 'px';
+    b.style.height = d + 'px';
+    b.style.background = desen.pensula === 'radiera' ? 'var(--surface)' : desen.culoare;
+    b.style.opacity = desen.pensula === 'marker' ? '0.45' : '1';
+  }
+
   function randeazaUnelteDesen() {
-    const culori = $('#desenCulori');
-    culori.innerHTML = '';
-    CULORI_DESEN.forEach(cul => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'desen-culoare';
-      b.style.background = cul;
-      b.setAttribute('role', 'radio');
-      b.setAttribute('aria-checked', String(cul === desen.culoare && !desen.radiera));
-      b.setAttribute('aria-label', 'Culoare ' + cul);
-      b.addEventListener('click', () => {
-        desen.culoare = cul;
-        desen.radiera = false;
-        randeazaUnelteDesen();
+    // Uneltele rămân în pagină și după ce fereastra s-a închis, deci fiecare
+    // apăsare trebuie să verifice întâi că mai există un desen în lucru.
+    if (!desen) return;
+    const pensule = $('#desenPensule');
+    if (pensule) {
+      pensule.innerHTML = '';
+      PENSULE.forEach(p => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        const activa = p.id === desen.pensula;
+        b.className = 'desen-pensula' + (activa ? ' is-active' : '');
+        b.setAttribute('role', 'radio');
+        b.setAttribute('aria-checked', String(activa));
+        b.setAttribute('aria-label', p.nume);
+        b.title = p.nume + ' — ' + p.desc;
+        b.innerHTML = ICOANE_PENSULA[p.id] || '';
+        b.addEventListener('click', () => {
+          if (!desen) return;
+          desen.pensula = p.id;
+          randeazaUnelteDesen();
+        });
+        pensule.appendChild(b);
       });
-      culori.appendChild(b);
-    });
+    }
 
-    const grosimi = $('#desenGrosimi');
-    grosimi.innerHTML = '';
-    GROSIMI_DESEN.forEach(gr => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'desen-grosime';
-      b.setAttribute('role', 'radio');
-      b.setAttribute('aria-checked', String(gr === desen.grosime));
-      b.setAttribute('aria-label', 'Grosime ' + gr);
-      b.innerHTML = '<span style="width:' + Math.min(18, gr + 2) + 'px;height:' +
-                    Math.min(18, gr + 2) + 'px"></span>';
-      b.addEventListener('click', () => { desen.grosime = gr; randeazaUnelteDesen(); });
-      grosimi.appendChild(b);
-    });
+    const culori = $('#desenCulori');
+    if (culori) {
+      culori.innerHTML = '';
+      CULORI_DESEN.forEach(cul => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        const aleasa = cul === desen.culoare && desen.pensula !== 'radiera';
+        b.className = 'desen-culoare' + (aleasa ? ' is-active' : '');
+        b.style.background = cul;
+        b.setAttribute('role', 'radio');
+        b.setAttribute('aria-checked', String(aleasa));
+        b.setAttribute('aria-label', 'Culoare ' + cul);
+        b.addEventListener('click', () => {
+          if (!desen) return;
+          desen.culoare = cul;
+          // dacă alegi o culoare, sigur nu vrei să ștergi
+          if (desen.pensula === 'radiera') desen.pensula = 'pix';
+          randeazaUnelteDesen();
+        });
+        culori.appendChild(b);
+      });
+    }
 
-    $('#desenRadiera').setAttribute('aria-pressed', String(!!desen.radiera));
+    const glisor = $('#desenGrosime');
+    if (glisor && +glisor.value !== desen.grosime) glisor.value = String(desen.grosime);
+    const oricare = $('#desenOricare');
+    if (oricare && desen.pensula !== 'radiera') oricare.value = desen.culoare;
+    actualizeazaBulina();
   }
 
   function legPanza() {
@@ -611,9 +701,9 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       // în unele situații aruncă, și atunci restul funcției n-ar mai rula
       try { c.setPointerCapture(e.pointerId); } catch (err) { /* mergem și fără */ }
       desen.linii.push({
-        culoare: desen.radiera ? FUNDAL_DESEN : desen.culoare,
-        // radiera trebuie să acopere, deci e mai groasă decât pixul
-        grosime: desen.radiera ? Math.max(16, desen.grosime * 4) : desen.grosime,
+        tip: desen.pensula,
+        culoare: desen.culoare,
+        grosime: desen.grosime,
         puncte: [punct(e)]
       });
       redeseneaza();
@@ -643,8 +733,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
 
   function deschideDesenul() {
     if (!activeNote()) return;
-    desen = { linii: [], culoare: CULORI_DESEN[0], grosime: GROSIMI_DESEN[1],
-              radiera: false, dpr: 1, dim: '', pointer: null };
+    desen = { linii: [], culoare: CULORI_DESEN[0], grosime: 6,
+              pensula: 'pix', dpr: 1, dim: '', pointer: null };
     randeazaUnelteDesen();
     $('#desenDlg').showModal();
     legPanza();
@@ -4063,11 +4153,23 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     /* ---------- desen ---------- */
     pe('#desenInchide', 'click', () => $('#desenDlg').close());
     pe('#desenInchide2', 'click', () => $('#desenDlg').close());
-    pe('#desenDlg', 'close', () => { desen = null; });
+    // Vestea închiderii vine cu întârziere. Dacă între timp ai redeschis
+    // desenul, nu avem voie să ștergem starea proaspătă — de aceea întrebăm
+    // fereastra dacă chiar e închisă acum, nu ne luăm după eveniment.
+    pe('#desenDlg', 'close', () => {
+      const dlg = $('#desenDlg');
+      if (!dlg || !dlg.open) desen = null;
+    });
     pe('#desenSalveaza', 'click', salveazaDesenul);
-    pe('#desenRadiera', 'click', () => {
+    pe('#desenGrosime', 'input', e => {
       if (!desen) return;
-      desen.radiera = !desen.radiera;
+      desen.grosime = Math.min(GROSIME_MAX, Math.max(GROSIME_MIN, +e.target.value || 1));
+      actualizeazaBulina();
+    });
+    pe('#desenOricare', 'input', e => {
+      if (!desen) return;
+      desen.culoare = e.target.value;
+      if (desen.pensula === 'radiera') desen.pensula = 'pix';
       randeazaUnelteDesen();
     });
     pe('#desenInapoi', 'click', () => {

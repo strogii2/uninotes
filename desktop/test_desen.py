@@ -10,6 +10,12 @@ import tempfile
 import time
 from pathlib import Path
 
+import sys
+
+# Consola Windows nu scrie diacritice implicit, iar rezultatul testului
+# s-ar pierde tocmai cand ai nevoie de el.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 import webview
 
 import main as app
@@ -82,6 +88,98 @@ PROBA = r"""
 """
 
 
+URMA_PENSULEI = r"""
+(function () {
+  var out = {};
+  var c = document.querySelector('#desenCanvas');
+  var g = c.getContext('2d');
+  var r = c.getBoundingClientRect();
+
+  out.pensule = document.querySelectorAll('.desen-pensula').length;
+  out.culori = document.querySelectorAll('#desenCulori .desen-culoare').length;
+  out.glisor = !!document.querySelector('#desenGrosime');
+  out.paleta_libera = !!document.querySelector('#desenOricare');
+
+  // alegem pensula si o culoare inchisa, apoi o grosime mare
+  var b = Array.prototype.slice.call(document.querySelectorAll('.desen-pensula'))
+    .filter(function (x) { return x.getAttribute('aria-label') === 'PENSULA'; })[0];
+  if (!b) { out.eroare = 'nu gasesc pensula PENSULA'; return JSON.stringify(out); }
+  b.click();
+  document.querySelectorAll('#desenCulori .desen-culoare')[0].click();
+  var s = document.querySelector('#desenGrosime');
+  s.value = '14';
+  s.dispatchEvent(new Event('input', {bubbles: true}));
+  out.grosime_setata = s.value;
+  out.bulina = (document.querySelector('#desenBulina') || {}).style
+    ? document.querySelector('#desenBulina').style.width : '';
+
+  function ev(tip, x, y) {
+    c.dispatchEvent(new PointerEvent(tip, {
+      pointerId: 1, bubbles: true, cancelable: true, pointerType: 'mouse',
+      isPrimary: true, clientX: r.left + x, clientY: r.top + y
+    }));
+  }
+  var Y = Math.round(r.height / 2);
+  ev('pointerdown', 60, Y);
+  ev('pointermove', 200, Y);
+  ev('pointermove', 340, Y);
+  ev('pointerup', 340, Y);
+
+  function pixel(x, y) {
+    var d = g.getImageData(Math.round(x * (c.width / r.width)),
+                           Math.round(y * (c.height / r.height)), 1, 1).data;
+    return [d[0], d[1], d[2]];
+  }
+  out.miez = pixel(200, Y);                    // chiar pe linie
+  out.langa = pixel(200, Y + 14);              // putin sub linie
+  out.departe = pixel(200, Y + 60);            // hartie curata
+  return JSON.stringify(out);
+})()
+"""
+
+RADIERA = r"""
+(function () {
+  var out = {};
+  var c = document.querySelector('#desenCanvas');
+  var g = c.getContext('2d');
+  var r = c.getBoundingClientRect();
+  function ev(tip, x, y, id) {
+    c.dispatchEvent(new PointerEvent(tip, {
+      pointerId: id, bubbles: true, cancelable: true, pointerType: 'mouse',
+      isPrimary: true, clientX: r.left + x, clientY: r.top + y
+    }));
+  }
+  function pixel(x, y) {
+    var d = g.getImageData(Math.round(x * (c.width / r.width)),
+                           Math.round(y * (c.height / r.height)), 1, 1).data;
+    return [d[0], d[1], d[2]];
+  }
+  var Y = Math.round(r.height / 2);
+
+  // intai o linie cu pixul
+  Array.prototype.slice.call(document.querySelectorAll('.desen-pensula'))
+    .filter(function (x) { return x.getAttribute('aria-label') === 'Pix'; })[0].click();
+  document.querySelectorAll('#desenCulori .desen-culoare')[0].click();
+  ev('pointerdown', 60, Y, 1); ev('pointermove', 200, Y, 1);
+  ev('pointermove', 340, Y, 1); ev('pointerup', 340, Y, 1);
+  out.dupa_pix = pixel(200, Y);
+
+  // apoi trecem radiera peste ea
+  Array.prototype.slice.call(document.querySelectorAll('.desen-pensula'))
+    .filter(function (x) { return x.getAttribute('aria-label') === 'Radieră'; })[0].click();
+  ev('pointerdown', 60, Y, 2); ev('pointermove', 200, Y, 2);
+  ev('pointermove', 340, Y, 2); ev('pointerup', 340, Y, 2);
+  out.dupa_radiera = pixel(200, Y);
+  out.a_sters = out.dupa_radiera[0] > 240 && out.dupa_radiera[1] > 240 && out.dupa_radiera[2] > 240;
+  return JSON.stringify(out);
+})()
+"""
+
+
+def citeste(v):
+    return json.loads(v) if isinstance(v, (str, bytes, bytearray)) else v
+
+
 def probe(window):
     out = {}
     try:
@@ -123,6 +221,36 @@ def probe(window):
         out["latime_pagina"] = window.evaluate_js("document.documentElement.clientWidth")
         window.resize(1320, 860)
         time.sleep(1.5)
+
+        # --- uneltele noi: fiecare pensulă trebuie să lase altă urmă ---
+        window.evaluate_js("document.querySelector('#desenInchide').click(); 'ok'")
+        time.sleep(1)
+        out["unelte"] = {}
+        out["s_a_deschis"] = {}
+        for pensula in ("Pix", "Marker", "Neon"):
+            window.evaluate_js("document.querySelector('#desenBtn').click(); 'ok'")
+            time.sleep(1.5)
+            out["s_a_deschis"][pensula.lower()] = window.evaluate_js(
+                "document.querySelector('#desenDlg').open")
+            out["unelte"][pensula.lower()] = citeste(window.evaluate_js(
+                URMA_PENSULEI.replace("PENSULA", pensula)))
+            window.evaluate_js("document.querySelector('#desenInchide').click(); 'ok'")
+            time.sleep(0.8)
+
+        # radiera trebuie să lase hârtia curată acolo unde trece
+        window.evaluate_js("document.querySelector('#desenBtn').click(); 'ok'")
+        time.sleep(2)
+        out["s_a_deschis"]["radiera"] = window.evaluate_js(
+            "document.querySelector('#desenDlg').open")
+        out["unelte"]["radiera"] = citeste(window.evaluate_js(RADIERA))
+        window.evaluate_js("document.querySelector('#desenInchide').click(); 'ok'")
+        time.sleep(1)
+
+        # desenul final, cel care ajunge în notiță
+        window.evaluate_js("document.querySelector('#desenBtn').click(); 'ok'")
+        time.sleep(1.5)
+        window.evaluate_js(PROBA)
+        time.sleep(0.5)
 
         # salvarea în notiță: desenul trebuie să se vadă printre rânduri
         window.evaluate_js("document.querySelector('#desenSalveaza').click(); 'ok'")
