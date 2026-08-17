@@ -111,7 +111,8 @@ def raspunde(functie, camp):
         if camp.get("courseid") == "101":
             return [
                 {"id": 1, "name": "Săptămâna 1", "modules": [
-                    {"id": 11, "name": "Curs 1 — limite", "modname": "resource"},
+                    {"id": 11, "name": "Curs 1 — limite", "modname": "resource",
+                     "url": "https://moodle.test/mod/resource/view.php?id=11"},
                     {"id": 12, "name": "Anunț important", "modname": "label"},
                     {"id": 13, "name": "Tema 1 — derivate", "modname": "assign"},
                 ]},
@@ -241,6 +242,7 @@ MATERII = r"""
         randuri: Array.prototype.slice.call(g.querySelectorAll('.mgrup__rand')).map(function (r) {
           return {
             titlu: (r.querySelector('.mgrup__titlu') || {}).textContent || '',
+            legatura: (r.querySelector('.mgrup__titlu.e-legatura') || {}).href || '',
             jos: (r.querySelector('.mgrup__jos') || {}).textContent || '',
             dreapta: (r.querySelector('.mgrup__dreapta') || {}).textContent || '',
             rau: r.classList.contains('e-rau')

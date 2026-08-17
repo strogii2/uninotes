@@ -1160,6 +1160,27 @@ body{-webkit-tap-highlight-color:transparent}
   .desen-bara .btn__text{display:none}
 }
 
+/* ---- copii de siguranță ---- */
+.copii{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:var(--sp-3)}
+.copie{
+  display:flex;align-items:center;gap:var(--sp-3);
+  padding:10px var(--sp-3);border:1px solid var(--border);border-radius:var(--r-md);
+  background:var(--surface);
+}
+.copie__corp{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.copie__corp strong{font-size:14px;font-variant-numeric:tabular-nums}
+.copie__corp small{font-size:12px;color:var(--fg-muted)}
+
+/* materialele din Moodle se deschid în browser */
+.mgrup__titlu.e-legatura{color:var(--primary);text-decoration:none;cursor:pointer}
+.mgrup__titlu.e-legatura:hover{text-decoration:underline}
+
+/* legătura cu Moodle s-a rupt: se vede din bara laterală, nu doar înăuntru */
+.nav__item.e-problema .count{
+  background:color-mix(in srgb,var(--danger) 18%,transparent);
+  color:var(--danger);font-weight:700;
+}
+
 /* ---- amintiri pentru termene ---- */
 .anunt-bara{
   display:flex;align-items:center;gap:var(--sp-3);

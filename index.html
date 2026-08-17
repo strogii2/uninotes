@@ -179,6 +179,9 @@ window.addEventListener('unhandledrejection', function (e) {
         <button class="ghost-btn" id="importBtn" title="Încarcă o copie de siguranță">
           <svg class="ic"><use href="#i-upload"></use></svg> Import
         </button>
+        <button class="ghost-btn" id="copiiBtn" title="Copiile pe care aplicația le face singură">
+          <svg class="ic"><use href="#i-restore"></use></svg> Copii
+        </button>
         <button class="ghost-btn" id="helpBtn" title="Scurtături de tastatură">
           <svg class="ic"><use href="#i-keyboard"></use></svg> Taste
         </button>
@@ -493,6 +496,39 @@ window.addEventListener('unhandledrejection', function (e) {
         <button class="btn btn--primary btn--sm" id="termeneAnuntPornire">Pornește</button>
       </div>
       <div class="termene" id="termeneLista"></div>
+    </div>
+  </div>
+</dialog>
+
+<!-- ============ COPII DE SIGURANȚĂ ============ -->
+<dialog class="orar-dlg" id="copiiDlg" aria-label="Copii de siguranță">
+  <div class="orar">
+    <header class="orar__top">
+      <button class="icon-btn only-mobile" id="copiiClose2" aria-label="Închide">
+        <svg class="ic"><use href="#i-back"></use></svg>
+      </button>
+      <h2 class="orar__title">
+        <svg class="ic"><use href="#i-restore"></use></svg>
+        <span>Copii de siguranță</span>
+      </h2>
+      <span class="spacer"></span>
+      <button class="btn btn--sm" id="copieAcum">
+        <svg class="ic"><use href="#i-plus"></use></svg>
+        <span class="btn__text">Fă o copie acum</span>
+      </button>
+      <button class="icon-btn no-mobile" id="copiiClose" aria-label="Închide">
+        <svg class="ic"><use href="#i-x"></use></svg>
+      </button>
+    </header>
+    <div class="orar__body">
+      <div class="copii">
+        <p class="moodle__ajutor" id="copiiAjutor">
+          Aplicația pune deoparte notițele tale din când în când, singură. Dacă ștergi
+          ceva din greșeală, te poți întoarce la cum erau. Înainte de a te întoarce,
+          fac întâi o copie a stării de acum — deci nici pasul ăsta nu e fără întoarcere.
+        </p>
+        <div id="copiiLista"></div>
+      </div>
     </div>
   </div>
 </dialog>
