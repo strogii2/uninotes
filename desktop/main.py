@@ -45,7 +45,21 @@ def resolve_data_dir() -> Path:
     """
     Notițele stau lângă .exe, ca să le poți copia/sincroniza ușor.
     Dacă acolo nu se poate scrie (ex. aplicația e în Program Files), folosim %APPDATA%.
+
+    Un lansator care pornește aplicația din alt folder decât al tău spune
+    explicit unde stau notițele, prin UNINOTES_NOTITE. Fără asta, aplicația
+    și-ar face un folder nou, gol, lângă locul de unde a fost pornită — și ai
+    crede că ți-ai pierdut notițele.
     """
+    ales = os.environ.get("UNINOTES_NOTITE")
+    if ales:
+        try:
+            p = Path(ales)
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        except Exception:                                         # noqa: BLE001
+            pass                                                  # cădem pe drumul obișnuit
+
     candidate = app_dir() / "Notite UniNotes"
     try:
         candidate.mkdir(parents=True, exist_ok=True)
