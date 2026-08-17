@@ -127,12 +127,39 @@ def raspunde(functie, camp):
             "message": "Funcție necunoscută"}
 
 
+# Facultatea poate avea lucrurile pornite sau oprite; testul le încearcă pe rând.
+MOD = {"fel": "normal"}
+
+
 class Server(BaseHTTPRequestHandler):
     def do_POST(self):                               # noqa: N802
         cale = self.path.split("?")[0]
         lungime = int(self.headers.get("Content-Length") or 0)
         camp = {k: v[0] for k, v in
                 urllib.parse.parse_qs(self.rfile.read(lungime).decode("utf-8")).items()}
+
+        fel = MOD["fel"]
+        if fel == "nu_e_moodle":
+            brut = b"<!doctype html><html><body>Pagina facultatii</body></html>"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(brut)))
+            self.end_headers()
+            self.wfile.write(brut)
+            return
+        if fel == "ws_oprit":
+            self.trimite({"exception": "moodle_exception", "errorcode": "enablewsdescription",
+                          "error": "Web services are not enabled",
+                          "message": "Web services are not enabled"})
+            return
+        if fel == "mobil_oprit":
+            if cale == "/login/token.php":
+                self.trimite({"error": "Mobile web service is not enabled",
+                              "errorcode": "enablemobilewebservice"})
+            else:
+                self.trimite({"exception": "moodle_exception", "errorcode": "invalidtoken",
+                              "message": "Invalid token - token not found"})
+            return
 
         if cale == "/login/token.php":
             if camp.get("username") == UTILIZATOR and camp.get("password") == PAROLA:
@@ -267,6 +294,24 @@ def probe(window):
         window.evaluate_js("document.querySelector('#moodleBtn').click(); 'ok'")
         time.sleep(1.2)
         out["nelegat_la_inceput"] = citeste(window.evaluate_js(CONT))
+
+        # ---- „Verifică adresa”: spune ce e pornit, fără cont și fără cheie ----
+        def verifica(fel):
+            MOD["fel"] = fel
+            window.evaluate_js("""
+                document.querySelector('#moodleSite').value = %s;
+                document.querySelector('#moodleVerifica').click();
+                'ok'
+            """ % json.dumps(site))
+            time.sleep(3)
+            return window.evaluate_js(
+                "(document.querySelector('#moodleContStare') || {}).textContent")
+
+        out["verifica_normal"] = verifica("normal")
+        out["verifica_ws_oprit"] = verifica("ws_oprit")
+        out["verifica_mobil_oprit"] = verifica("mobil_oprit")
+        out["verifica_nu_e_moodle"] = verifica("nu_e_moodle")
+        MOD["fel"] = "normal"
 
         # ---- parolă greșită: mesaj pe înțeles, fără să se lege ----
         intra_cu_parola(window, site, UTILIZATOR, "parola-gresita", 4)
