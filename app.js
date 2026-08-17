@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 16;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 17;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -201,9 +201,46 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
 
     // legătura cu Moodle a apărut ultima
     if (!parsed.moodle || typeof parsed.moodle !== 'object') parsed.moodle = {};
+    const text = (v, n) => String(v || '').slice(0, n);
+    const listaScurta = (v, n, fn) => (Array.isArray(v) ? v : []).slice(0, n).map(fn);
     parsed.moodle = {
-      url: String(parsed.moodle.url || '').slice(0, 500),
-      ultima: String(parsed.moodle.ultima || '').slice(0, 40)
+      url: text(parsed.moodle.url, 500),          // adresa calendarului
+      site: text(parsed.moodle.site, 200),        // adresa Moodle
+      siteNume: text(parsed.moodle.siteNume, 80),
+      nume: text(parsed.moodle.nume, 80),
+      userid: +parsed.moodle.userid || 0,
+      ultima: text(parsed.moodle.ultima, 40),
+      ultimaCont: text(parsed.moodle.ultimaCont, 40),
+      // Ce s-a adus despre fiecare materie. Tăiat scurt înadins: totul pleacă
+      // și prin sincronizare, iar o listă de materiale poate fi foarte lungă.
+      cursuri: listaScurta(parsed.moodle.cursuri, 30, c => ({
+        id: +(c && c.id) || 0,
+        nume: text(c && c.nume, 80),
+        scurt: text(c && c.scurt, 40),
+        subjectId: (c && c.subjectId) || null,
+        teme: listaScurta(c && c.teme, 40, t => ({
+          id: +(t && t.id) || 0,
+          nume: text(t && t.nume, 80),
+          termen: /^\d{4}-\d{2}-\d{2}$/.test((t && t.termen) || '') ? t.termen : '',
+          descriere: text(t && t.descriere, 200)
+        })),
+        note: listaScurta(c && c.note, 40, n => ({
+          nume: text(n && n.nume, 80),
+          valoare: text(n && n.valoare, 24),
+          procent: text(n && n.procent, 24)
+        })),
+        anunturi: listaScurta(c && c.anunturi, 6, a => ({
+          titlu: text(a && a.titlu, 90),
+          data: text(a && a.data, 10),
+          autor: text(a && a.autor, 60),
+          text: text(a && a.text, 240)
+        })),
+        materiale: listaScurta(c && c.materiale, 60, m => ({
+          sectiune: text(m && m.sectiune, 60),
+          nume: text(m && m.nume, 90),
+          tip: text(m && m.tip, 20)
+        }))
+      }))
     };
 
     // starea repetițiilor: amprentă → { pas, urmator }
@@ -3649,8 +3686,234 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
      facultate la alta și se schimbă de la un an la altul.
      ========================================================== */
   function moodle() {
-    if (!db.moodle || typeof db.moodle !== 'object') db.moodle = { url: '', ultima: '' };
+    if (!db.moodle || typeof db.moodle !== 'object') db.moodle = {};
+    if (!Array.isArray(db.moodle.cursuri)) db.moodle.cursuri = [];
     return db.moodle;
+  }
+
+  /* ----------------------------------------------------------
+     Legătura cu contul
+     Jetonul ți-l dă chiar Moodle (Preferințe → Chei de securitate), deci
+     parola nu trece niciodată prin aplicație. Îl ținem lângă browser, nu în
+     notițe: așa nu pleacă nici în backup, nici în sincronizare.
+     ---------------------------------------------------------- */
+  const CHEIE_MOODLE = 'uninotes.moodle-jeton';
+  let functiiMoodle = [];              // ce știe să facă Moodle-ul facultății tale
+
+  const areFunctia = n => functiiMoodle.indexOf(n) >= 0;
+
+  const curataHtml = h => String(h || '')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/(p|div|li|h\d)>/gi, ' ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/&quot;/gi, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  /** Moodle răspunde cu 200 și pentru greșeli, deci verificăm în conținut. */
+  function mesajMoodle(d) {
+    const cod = String(d.errorcode || '');
+    const text = String(d.message || '');
+    if (cod === 'invalidtoken' || /invalid token/i.test(text))
+      return 'Cheia nu e bună sau a expirat. Ia-o din nou din Moodle, de la Chei de securitate.';
+    if (cod === 'accessexception' || cod === 'nopermissions')
+      return 'Cheia asta n-are voie la ce am cerut.';
+    if (/web ?service/i.test(text) && /disab|enable|not available/i.test(text))
+      return 'Facultatea ta n-a pornit serviciile web în Moodle. ' +
+             'Rămâne varianta cu calendarul, mai jos.';
+    return text || 'Moodle a refuzat cererea.';
+  }
+
+  async function moodleApel(functie, param) {
+    if (!api() || !api().moodle_api) {
+      throw new Error('Legătura cu contul merge doar în aplicația de pe calculator, ' +
+                      'fiindcă browserul n-are voie să ceară nimic de la alt site. ' +
+                      'Pe telefon informația ajunge prin sincronizare.');
+    }
+    const r = await api().moodle_api((moodle().site || '').trim(),
+                                     localGet(CHEIE_MOODLE), functie, param || {});
+    if (!r || !r.ok) throw new Error((r && r.eroare) || 'Moodle n-a răspuns.');
+    const d = r.raspuns;
+    if (d && d.exception) throw new Error(mesajMoodle(d));
+    return d;
+  }
+
+  /** Se prezintă la Moodle și află ce funcții are pornite facultatea. */
+  async function conecteazaMoodle() {
+    const info = await moodleApel('core_webservice_get_site_info');
+    functiiMoodle = ((info && info.functions) || []).map(f => f.name);
+    const m = moodle();
+    m.nume = String((info && (info.fullname || info.username)) || '').slice(0, 80);
+    m.siteNume = String((info && info.sitename) || '').slice(0, 80);
+    m.userid = +(info && info.userid) || 0;
+    persist();
+    return info;
+  }
+
+  /**
+   * Aduce tot ce se poate despre fiecare materie. Fiecare bucată e cerută
+   * separat și, dacă facultatea n-o are pornită, lipsește doar ea — restul
+   * vine oricum. De asta întrebăm întâi ce funcții există.
+   */
+  async function aduTotDinMoodle(spune) {
+    spune('Mă prezint la Moodle…');
+    const info = await conecteazaMoodle();
+    const userid = +info.userid || 0;
+
+    spune('Iau lista cursurilor…');
+    const brute = await moodleApel('core_enrol_get_users_courses', { userid: userid });
+    const lista = (brute || []).filter(c => c && c.id);
+    if (!lista.length) throw new Error('Contul nu e înscris la niciun curs.');
+
+    const idCursuri = {};
+    lista.forEach((c, i) => { idCursuri['courseids[' + i + ']'] = c.id; });
+
+    // temele vin pentru toate cursurile deodată: o cerere, nu una pe materie
+    const temePeCurs = {};
+    if (areFunctia('mod_assign_get_assignments')) {
+      spune('Iau temele…');
+      try {
+        const t = await moodleApel('mod_assign_get_assignments', idCursuri);
+        ((t && t.courses) || []).forEach(c => { temePeCurs[c.id] = c.assignments || []; });
+      } catch (e) { /* facultatea n-are temele deschise: mergem mai departe */ }
+    }
+
+    // forumul de anunțuri al fiecărui curs (cel de tip „news")
+    const forumPeCurs = {};
+    if (areFunctia('mod_forum_get_forums_by_courses')) {
+      spune('Caut anunțurile…');
+      try {
+        const f = await moodleApel('mod_forum_get_forums_by_courses', idCursuri);
+        (f || []).forEach(x => { if (x && x.type === 'news') forumPeCurs[x.course] = x.id; });
+      } catch (e) { /* fără anunțuri */ }
+    }
+    const functieDiscutii = areFunctia('mod_forum_get_forum_discussions')
+      ? 'mod_forum_get_forum_discussions'
+      : (areFunctia('mod_forum_get_forum_discussions_paginated')
+          ? 'mod_forum_get_forum_discussions_paginated' : '');
+
+    const cursuri = [];
+    for (let i = 0; i < lista.length; i++) {
+      const c = lista[i];
+      const nume = String(c.fullname || c.shortname || 'Curs').slice(0, 80);
+      spune('Materia ' + (i + 1) + ' din ' + lista.length + ': ' + nume);
+
+      const curs = {
+        id: c.id, nume: nume, scurt: String(c.shortname || '').slice(0, 40),
+        subjectId: null, teme: [], note: [], anunturi: [], materiale: []
+      };
+
+      (temePeCurs[c.id] || []).slice(0, 40).forEach(a => {
+        curs.teme.push({
+          id: a.id,
+          nume: String(a.name || '').slice(0, 80),
+          termen: a.duedate ? caData(new Date(a.duedate * 1000)) : '',
+          descriere: curataHtml(a.intro).slice(0, 200)
+        });
+      });
+
+      if (areFunctia('gradereport_user_get_grade_items')) {
+        try {
+          const g = await moodleApel('gradereport_user_get_grade_items',
+                                     { courseid: c.id, userid: userid });
+          const u = ((g && g.usergrades) || [])[0] || {};
+          (u.gradeitems || []).forEach(it => {
+            const val = String(it.gradeformatted || '').trim();
+            if (!val || val === '-') return;                 // încă n-ai notă acolo
+            curs.note.push({
+              nume: String(it.itemname || 'Notă').slice(0, 80),
+              valoare: val.slice(0, 24),
+              procent: String(it.percentageformatted || '').replace(/^-$/, '').trim().slice(0, 24)
+            });
+          });
+          curs.note = curs.note.slice(0, 40);
+        } catch (e) { /* fără note */ }
+      }
+
+      if (forumPeCurs[c.id] && functieDiscutii) {
+        try {
+          const d = await moodleApel(functieDiscutii,
+                                     { forumid: forumPeCurs[c.id], perpage: 6, page: 0 });
+          ((d && d.discussions) || []).slice(0, 6).forEach(x => {
+            curs.anunturi.push({
+              titlu: String(x.name || '').slice(0, 90),
+              data: x.timemodified ? caData(new Date(x.timemodified * 1000)) : '',
+              autor: String(x.userfullname || '').slice(0, 60),
+              text: curataHtml(x.message).slice(0, 240)
+            });
+          });
+        } catch (e) { /* fără anunțuri */ }
+      }
+
+      if (areFunctia('core_course_get_contents')) {
+        try {
+          const s = await moodleApel('core_course_get_contents', { courseid: c.id });
+          (s || []).forEach(sect => {
+            (sect.modules || []).forEach(m => {
+              if (curs.materiale.length >= 60) return;
+              if (m.modname === 'label') return;             // eticheta nu e material
+              curs.materiale.push({
+                sectiune: String(sect.name || '').slice(0, 60),
+                nume: String(m.name || '').slice(0, 90),
+                tip: String(m.modname || '').slice(0, 20)
+              });
+            });
+          });
+        } catch (e) { /* fără materiale */ }
+      }
+
+      cursuri.push(curs);
+    }
+    return cursuri;
+  }
+
+  /** Cursurile devin materii, iar temele cu termen devin termene. */
+  function leagaCursurile(cursuri) {
+    let materiiNoi = 0, temeNoi = 0, temeInnoite = 0;
+    cursuri.forEach(c => {
+      let sid = potrivesteMaterie(c.nume) || (c.scurt ? potrivesteMaterie(c.scurt) : null);
+      if (!sid) {
+        const s = {
+          id: uid(), name: c.nume.slice(0, 60), prof: '',
+          color: PALETTE[db.subjects.length % PALETTE.length]
+        };
+        db.subjects.push(s);
+        sid = s.id;
+        materiiNoi++;
+      }
+      c.subjectId = sid;
+
+      c.teme.forEach(t => {
+        if (!t.termen) return;
+        const sursa = 'moodle:tema:' + t.id;
+        const vechi = termene().find(x => x.sursa === sursa);
+        if (vechi) {
+          if (vechi.data !== t.termen || vechi.titlu !== t.nume) {
+            vechi.data = t.termen;
+            vechi.titlu = t.nume;
+            temeInnoite++;
+          }
+          if (!vechi.subjectId) vechi.subjectId = sid;
+          return;
+        }
+        // temele din semestrul trecut nu se adaugă singure
+        if (zileRamase(t.termen) < 0) return;
+        termene().push({
+          id: uid(), titlu: t.nume, data: t.termen, tip: 'predare',
+          subjectId: sid, nota: 'Din Moodle · ' + c.nume, gata: false, sursa: sursa
+        });
+        temeNoi++;
+      });
+    });
+
+    moodle().cursuri = cursuri;
+    moodle().ultimaCont = new Date().toISOString();
+    salveazaTermene();
+    renderSidebar();
+    renderList();
+    const n = activeNote(); if (n) renderSubjectSelect(n);
+    return { materii: materiiNoi, teme: temeNoi, innoite: temeInnoite };
   }
 
   /**
@@ -3973,15 +4236,182 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     el.textContent = cate ? String(cate) : '—';
   }
 
+  /* ---- ce a venit, arătat pe materii ---- */
+  const NUME_MODUL = {
+    assign: 'temă', quiz: 'test', resource: 'fișier', url: 'link', page: 'pagină',
+    folder: 'folder', book: 'carte', forum: 'forum', choice: 'alegere', feedback: 'chestionar',
+    lesson: 'lecție', workshop: 'atelier', glossary: 'glosar', wiki: 'wiki'
+  };
+
+  function stareCont(text, rau) {
+    const el = $('#moodleContStare');
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.toggle('e-rau', !!rau);
+  }
+
+  function rezumatCurs(c) {
+    const deFacut = (c.teme || []).filter(t => t.termen && zileRamase(t.termen) >= 0).length;
+    const parti = [];
+    if (deFacut) parti.push(deFacut + (deFacut === 1 ? ' temă de predat' : ' teme de predat'));
+    if ((c.note || []).length) parti.push(c.note.length + (c.note.length === 1 ? ' notă' : ' note'));
+    if ((c.anunturi || []).length)
+      parti.push(c.anunturi.length + (c.anunturi.length === 1 ? ' anunț' : ' anunțuri'));
+    if ((c.materiale || []).length)
+      parti.push(c.materiale.length + (c.materiale.length === 1 ? ' material' : ' materiale'));
+    return parti.length ? parti.join(' · ') : 'nimic deocamdată';
+  }
+
+  function grupCurs(titlu, elemente, gol) {
+    const box = document.createElement('div');
+    box.className = 'mgrup';
+    const h = document.createElement('h4');
+    h.className = 'mgrup__cap';
+    h.textContent = titlu;
+    box.appendChild(h);
+
+    if (!elemente.length) {
+      const p = document.createElement('p');
+      p.className = 'mgrup__gol';
+      p.textContent = gol;
+      box.appendChild(p);
+      return box;
+    }
+
+    elemente.slice(0, 12).forEach(e => {
+      const r = document.createElement('div');
+      r.className = 'mgrup__rand' + (e.rau ? ' e-rau' : '');
+      const corp = document.createElement('span');
+      corp.className = 'mgrup__corp';
+      const t = document.createElement('span');
+      t.className = 'mgrup__titlu';
+      t.textContent = e.titlu;
+      corp.appendChild(t);
+      if (e.jos) {
+        const j = document.createElement('span');
+        j.className = 'mgrup__jos';
+        j.textContent = e.jos;
+        corp.appendChild(j);
+      }
+      if (e.text) {
+        const x = document.createElement('span');
+        x.className = 'mgrup__text';
+        x.textContent = e.text;
+        corp.appendChild(x);
+      }
+      r.appendChild(corp);
+      if (e.dreapta) {
+        const d = document.createElement('span');
+        d.className = 'mgrup__dreapta';
+        d.textContent = e.dreapta;
+        r.appendChild(d);
+      }
+      box.appendChild(r);
+    });
+
+    if (elemente.length > 12) {
+      const p = document.createElement('p');
+      p.className = 'mgrup__gol';
+      p.textContent = 'încă ' + (elemente.length - 12) + ' — restul, în Moodle';
+      box.appendChild(p);
+    }
+    return box;
+  }
+
+  function cartelaCurs(c) {
+    const s = c.subjectId ? db.subjects.find(x => x.id === c.subjectId) : null;
+    const det = document.createElement('details');
+    det.className = 'mcurs';
+
+    const cap = document.createElement('summary');
+    cap.className = 'mcurs__cap';
+    const bulina = document.createElement('span');
+    bulina.className = 'mcurs__bulina';
+    bulina.style.background = s ? s.color : 'var(--border-strong)';
+    cap.appendChild(bulina);
+    const nume = document.createElement('span');
+    nume.className = 'mcurs__nume';
+    nume.textContent = c.nume;
+    cap.appendChild(nume);
+    const rez = document.createElement('span');
+    rez.className = 'mcurs__rezumat';
+    rez.textContent = rezumatCurs(c);
+    cap.appendChild(rez);
+    det.appendChild(cap);
+
+    const corp = document.createElement('div');
+    corp.className = 'mcurs__corp';
+    corp.appendChild(grupCurs('De predat', (c.teme || []).map(t => {
+      const z = t.termen ? zileRamase(t.termen) : null;
+      return {
+        titlu: t.nume,
+        jos: t.termen ? (t.termen + ' · ' + textZile(z)) : 'fără termen',
+        rau: z !== null && z < 0
+      };
+    }), 'Nicio temă deschisă.'));
+    corp.appendChild(grupCurs('Note', (c.note || []).map(n => ({
+      titlu: n.nume, dreapta: n.valoare, jos: n.procent
+    })), 'Nicio notă încă.'));
+    corp.appendChild(grupCurs('Anunțuri', (c.anunturi || []).map(a => ({
+      titlu: a.titlu, jos: [a.data, a.autor].filter(Boolean).join(' · '), text: a.text
+    })), 'Niciun anunț.'));
+    corp.appendChild(grupCurs('Materiale', (c.materiale || []).map(m => ({
+      titlu: m.nume,
+      jos: [m.sectiune, NUME_MODUL[m.tip] || m.tip].filter(Boolean).join(' · ')
+    })), 'Niciun material.'));
+    det.appendChild(corp);
+    return det;
+  }
+
+  function randeazaMateriileMoodle() {
+    const gazda = $('#moodleMaterii');
+    if (!gazda) return;
+    gazda.innerHTML = '';
+    const cursuri = moodle().cursuri || [];
+    if (!cursuri.length) return;
+
+    const cap = document.createElement('h3');
+    cap.className = 'moodle__cap';
+    cap.textContent = 'Materiile tale';
+    gazda.appendChild(cap);
+
+    const cand = moodle().ultimaCont ? new Date(moodle().ultimaCont) : null;
+    if (cand && !isNaN(cand.getTime())) {
+      const p = document.createElement('p');
+      p.className = 'moodle__sumar';
+      p.textContent = 'Adus pe ' + fmtFull.format(cand) + '.';
+      gazda.appendChild(p);
+    }
+    cursuri.forEach(c => gazda.appendChild(cartelaCurs(c)));
+  }
+
+  function actualizeazaContMoodle() {
+    const legat = !!((moodle().site || '') && localGet(CHEIE_MOODLE));
+    $('#moodleAduTot').hidden = !legat;
+    $('#moodleDeconecteaza').hidden = !legat;
+    if (!legat) {
+      stareCont('Nelegat. Pune adresa Moodle și cheia de la Chei de securitate.');
+      return;
+    }
+    const cand = moodle().ultimaCont ? new Date(moodle().ultimaCont) : null;
+    stareCont((moodle().nume ? 'Legat ca ' + moodle().nume : 'Cheie salvată') +
+      (moodle().siteNume ? ' · ' + moodle().siteNume : '') +
+      (cand && !isNaN(cand.getTime()) ? ' · adus pe ' + fmtFull.format(cand) : ''));
+  }
+
   function deschideMoodle() {
     planMoodle = null;
     $('#moodleRezultat').innerHTML = '';
     $('#moodleAplica').hidden = true;
     $('#moodleUrl').value = moodle().url || '';
+    $('#moodleSite').value = moodle().site || '';
+    $('#moodleJeton').value = localGet(CHEIE_MOODLE);
     const cand = moodle().ultima ? new Date(moodle().ultima) : null;
     stareMoodle(cand && !isNaN(cand.getTime())
-      ? 'Ultima aducere: ' + cand.toLocaleDateString('ro-RO') + '.'
+      ? 'Ultima aducere din calendar: ' + cand.toLocaleDateString('ro-RO') + '.'
       : '');
+    actualizeazaContMoodle();
+    randeazaMateriileMoodle();
     closeNav();
     $('#moodleDlg').showModal();
   }
@@ -4499,7 +4929,60 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     pe('#repetitieClose', 'click', () => $('#repetitieDlg').close());
     pe('#repetitieClose2', 'click', () => $('#repetitieDlg').close());
 
-    /* ---------- Moodle ---------- */
+    /* ---------- Moodle: contul ---------- */
+    pe('#moodleConecteaza', 'click', async () => {
+      const site = ($('#moodleSite').value || '').trim().replace(/\/+$/, '');
+      const jeton = ($('#moodleJeton').value || '').trim();
+      if (!site || !jeton) { stareCont('Pune și adresa, și cheia.', true); return; }
+      moodle().site = site.slice(0, 200);
+      localSet(CHEIE_MOODLE, jeton);
+      stareCont('Mă conectez…');
+      $('#moodleConecteaza').disabled = true;
+      try {
+        await conecteazaMoodle();
+        actualizeazaContMoodle();
+        toast('Cont Moodle legat', 'ok');
+      } catch (e) {
+        stareCont(e.message || 'Nu m-am putut conecta.', true);
+        $('#moodleAduTot').hidden = true;
+      } finally {
+        $('#moodleConecteaza').disabled = false;
+      }
+    });
+
+    pe('#moodleAduTot', 'click', async () => {
+      $('#moodleAduTot').disabled = true;
+      try {
+        const cursuri = await aduTotDinMoodle(t => stareCont(t));
+        const r = leagaCursurile(cursuri);
+        randeazaMateriileMoodle();
+        actualizeazaContMoodle();
+        const parti = [cursuri.length + (cursuri.length === 1 ? ' materie' : ' materii')];
+        if (r.materii) parti.push(r.materii + (r.materii === 1 ? ' nouă' : ' noi'));
+        if (r.teme) parti.push(r.teme + (r.teme === 1 ? ' temă de predat' : ' teme de predat'));
+        if (r.innoite) parti.push(r.innoite + (r.innoite === 1 ? ' termen mutat' : ' termene mutate'));
+        toast('Adus din Moodle: ' + parti.join(', '), 'ok');
+      } catch (e) {
+        stareCont(e.message || 'Nu am putut aduce informația.', true);
+      } finally {
+        $('#moodleAduTot').disabled = false;
+      }
+    });
+
+    pe('#moodleDeconecteaza', 'click', async () => {
+      const ok = await confirmDialog('Deconectezi contul Moodle?',
+        'Cheia se șterge de pe dispozitivul ăsta. Materiile și termenele aduse rămân.',
+        'Deconectează');
+      if (!ok) return;
+      localSet(CHEIE_MOODLE, '');
+      functiiMoodle = [];
+      moodle().nume = '';
+      persist();
+      actualizeazaContMoodle();
+      toast('Cont deconectat', 'ok');
+    });
+
+    /* ---------- Moodle: calendarul ---------- */
     pe('#moodleBtn', 'click', deschideMoodle);
     pe('#moodleClose', 'click', () => $('#moodleDlg').close());
     pe('#moodleClose2', 'click', () => $('#moodleDlg').close());

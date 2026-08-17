@@ -508,32 +508,71 @@ window.addEventListener('unhandledrejection', function (e) {
     </header>
     <div class="orar__body">
       <div class="moodle">
-        <p class="moodle__ajutor">
-          În Moodle: <b>Calendar</b> → <b>Export calendar</b> → alege „Toate evenimentele”
-          și o perioadă cât mai lungă → <b>Obține adresa URL a calendarului</b>.
-          Adresa are o cheie doar a ta în ea, deci nu o da nimănui.
-        </p>
 
-        <label class="field">
-          <span>Adresa calendarului din Moodle</span>
-          <input type="url" id="moodleUrl" spellcheck="false"
-                 placeholder="https://moodle.facultatea.ro/calendar/export_execute.php?…">
-        </label>
+        <!-- ---- contul ---- -->
+        <section class="moodle__sectiune">
+          <h3 class="moodle__cap">Contul tău Moodle</h3>
+          <p class="moodle__ajutor">
+            Nu-ți cere nimeni parola. În Moodle: <b>Preferințe</b> → <b>Chei de securitate</b>
+            și copiază cheia de la <b>Moodle mobile web service</b>. Cheia rămâne pe
+            calculatorul tău — nu intră în backup și nu se trimite nicăieri, în afară de Moodle.
+          </p>
 
-        <div class="moodle__actiuni">
-          <button class="btn btn--primary" id="moodleAdu">
-            <svg class="ic"><use href="#i-download"></use></svg>
-            <span>Vezi ce aduce</span>
-          </button>
-          <button class="ghost-btn" id="moodleFisier">
-            <svg class="ic"><use href="#i-upload"></use></svg>
-            <span>…sau alege un fișier .ics descărcat</span>
-          </button>
-          <input type="file" id="moodleInput" accept=".ics,text/calendar" hidden>
-        </div>
+          <label class="field">
+            <span>Adresa Moodle</span>
+            <input type="url" id="moodleSite" spellcheck="false"
+                   placeholder="https://moodle.facultatea.ro">
+          </label>
+          <label class="field">
+            <span>Cheia (jetonul) din Moodle</span>
+            <input type="password" id="moodleJeton" spellcheck="false" autocomplete="off"
+                   placeholder="ex. 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d">
+          </label>
 
-        <p class="moodle__stare" id="moodleStare"></p>
-        <div id="moodleRezultat"></div>
+          <div class="moodle__actiuni">
+            <button class="btn btn--primary" id="moodleConecteaza">
+              <svg class="ic"><use href="#i-key"></use></svg>
+              <span>Conectează contul</span>
+            </button>
+            <button class="btn" id="moodleAduTot" hidden>
+              <svg class="ic"><use href="#i-download"></use></svg>
+              <span>Adu informația</span>
+            </button>
+            <button class="ghost-btn" id="moodleDeconecteaza" hidden>Deconectează</button>
+          </div>
+          <p class="moodle__stare" id="moodleContStare"></p>
+        </section>
+
+        <!-- ---- ce a venit, pe materii ---- -->
+        <div id="moodleMaterii"></div>
+
+        <!-- ---- varianta fără cont ---- -->
+        <details class="moodle__pliant" id="moodleCalendarPliant">
+          <summary>Doar termenele, din calendar (dacă facultatea n-a pornit serviciile web)</summary>
+          <p class="moodle__ajutor">
+            În Moodle: <b>Calendar</b> → <b>Export calendar</b> → alege „Toate evenimentele”
+            și o perioadă cât mai lungă → <b>Obține adresa URL a calendarului</b>.
+            Adresa are o cheie doar a ta în ea, deci nu o da nimănui.
+          </p>
+          <label class="field">
+            <span>Adresa calendarului din Moodle</span>
+            <input type="url" id="moodleUrl" spellcheck="false"
+                   placeholder="https://moodle.facultatea.ro/calendar/export_execute.php?…">
+          </label>
+          <div class="moodle__actiuni">
+            <button class="btn btn--primary" id="moodleAdu">
+              <svg class="ic"><use href="#i-download"></use></svg>
+              <span>Vezi ce aduce</span>
+            </button>
+            <button class="ghost-btn" id="moodleFisier">
+              <svg class="ic"><use href="#i-upload"></use></svg>
+              <span>…sau alege un fișier .ics descărcat</span>
+            </button>
+            <input type="file" id="moodleInput" accept=".ics,text/calendar" hidden>
+          </div>
+          <p class="moodle__stare" id="moodleStare"></p>
+          <div id="moodleRezultat"></div>
+        </details>
       </div>
     </div>
   </div>
