@@ -8,3 +8,6 @@ UniNotes.exe
 .build/
 __pycache__/
 *.pyc
+
+# fisiere de lucru, temporare (nu ajung in depozit)
+.*.tmp.*
