@@ -1160,6 +1160,27 @@ body{-webkit-tap-highlight-color:transparent}
   .desen-bara .btn__text{display:none}
 }
 
+/* ---- amintiri pentru termene ---- */
+.anunt-bara{
+  display:flex;align-items:center;gap:var(--sp-3);
+  padding:10px var(--sp-4);margin:0 auto var(--sp-3);max-width:760px;
+  border:1px solid color-mix(in srgb,var(--primary) 35%,var(--border));
+  border-radius:var(--r-md);
+  background:color-mix(in srgb,var(--primary) 8%,transparent);
+  font-size:13.5px;color:var(--fg);
+}
+.anunt-bara .ic{flex:none;color:var(--primary)}
+.anunt-bara span:not(.spacer){min-width:0}
+.termen__clopot{display:inline-flex;align-items:center;color:var(--fg-muted)}
+.termen__clopot .ic{width:14px;height:14px}
+.field-ajutor{
+  font-size:12.5px;line-height:1.55;color:var(--fg-muted);
+  margin:-2px 0 0;
+}
+@media (max-width:600px){
+  .anunt-bara{flex-wrap:wrap;gap:var(--sp-2)}
+}
+
 /* ---- Moodle ---- */
 .moodle{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:var(--sp-4)}
 .moodle__ajutor{

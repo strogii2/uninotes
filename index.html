@@ -472,6 +472,10 @@ window.addEventListener('unhandledrejection', function (e) {
         <span>Termene</span>
       </h2>
       <span class="spacer"></span>
+      <button class="icon-btn" id="termeneCalendar"
+              title="Pune termenele în calendarul telefonului" aria-label="Pune termenele în calendar">
+        <svg class="ic"><use href="#i-calendar"></use></svg>
+      </button>
       <button class="btn btn--primary btn--sm" id="termenAddBtn">
         <svg class="ic"><use href="#i-plus"></use></svg>
         <span class="btn__text">Termen nou</span>
@@ -481,6 +485,13 @@ window.addEventListener('unhandledrejection', function (e) {
       </button>
     </header>
     <div class="orar__body">
+      <!-- rândul ăsta apare doar cât timp notificările nu sunt pornite -->
+      <div class="anunt-bara" id="termeneAnuntBara" hidden>
+        <svg class="ic"><use href="#i-alarm"></use></svg>
+        <span id="termeneAnuntText"></span>
+        <span class="spacer"></span>
+        <button class="btn btn--primary btn--sm" id="termeneAnuntPornire">Pornește</button>
+      </div>
       <div class="termene" id="termeneLista"></div>
     </div>
   </div>
@@ -528,7 +539,8 @@ window.addEventListener('unhandledrejection', function (e) {
             <label class="field">
               <span>Utilizator</span>
               <input type="text" id="moodleUtilizator" spellcheck="false"
-                     autocomplete="username" autocapitalize="off" placeholder="ex. carp.dragos">
+                     autocomplete="username" autocapitalize="off"
+                     placeholder="cel cu care intri în Moodle">
             </label>
             <label class="field">
               <span>Parola de Moodle</span>
@@ -653,6 +665,11 @@ window.addEventListener('unhandledrejection', function (e) {
       <span>Detalii <em>(opțional)</em></span>
       <input id="termenNota" maxlength="120" placeholder="ex. de predat pe platformă, până la 23:59">
     </label>
+    <label class="field">
+      <span>Amintește-mi</span>
+      <select id="termenAminteste"></select>
+    </label>
+    <p class="field-ajutor" id="termenAmintesteAjutor"></p>
     <div class="modal__actions">
       <button type="button" class="btn btn--danger-ghost" id="termenDelete" hidden>Șterge</button>
       <span class="spacer"></span>

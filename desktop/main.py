@@ -227,9 +227,13 @@ class Api:
             return None
         path = result if isinstance(result, str) else result[0]
         try:
-            Path(path).write_text(content, encoding="utf-8")
+            # newline="" ca să nu traducă Windows capetele de rând: un fișier de
+            # calendar vine deja cu \r\n, iar traducerea l-ar face \r\r\n și
+            # unele calendare l-ar refuza
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                f.write(content)
             return str(path)
-        except Exception:
+        except Exception:                                         # noqa: BLE001
             return None
 
     def open_file(self):
