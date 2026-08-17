@@ -1160,6 +1160,51 @@ body{-webkit-tap-highlight-color:transparent}
   .desen-bara .btn__text{display:none}
 }
 
+/* ---- ecranul „Azi” ---- */
+.azi{
+  flex:1;min-height:0;overflow-y:auto;
+  padding:var(--sp-2) var(--sp-3) var(--sp-6);
+  display:flex;flex-direction:column;gap:var(--sp-5);
+}
+.azi-grup{display:flex;flex-direction:column;gap:2px}
+.azi-cap{display:flex;align-items:baseline;gap:var(--sp-2);padding:0 4px 6px}
+.azi-cap h2{
+  font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--fg-muted);margin:0;
+}
+.azi-cap__link{
+  margin-left:auto;font-size:12px;color:var(--primary);padding:3px 6px;
+  border-radius:var(--r-sm);transition:background var(--t) var(--ease);
+}
+.azi-cap__link:hover{background:color-mix(in srgb,var(--primary) 12%,transparent)}
+.azi-gol{font-size:13px;color:var(--fg-muted);margin:0;padding:2px 6px 4px}
+
+.azi-rand{
+  display:flex;align-items:center;gap:var(--sp-3);width:100%;text-align:left;
+  padding:9px 10px;border-radius:var(--r-md);
+  border-left:3px solid transparent;
+  transition:background var(--t) var(--ease);
+}
+button.azi-rand{cursor:pointer}
+button.azi-rand:hover{background:var(--muted)}
+.azi-rand__corp{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.azi-rand__titlu{font-size:14.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.azi-rand__jos{font-size:12px;color:var(--fg-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.azi-rand__dreapta{
+  flex:none;font-size:12.5px;color:var(--fg-muted);font-variant-numeric:tabular-nums;
+}
+
+/* ora care se ține chiar acum, și termenele care ard */
+.azi-rand.e-acum{
+  background:color-mix(in srgb,var(--primary) 12%,transparent);
+  border-left-color:var(--primary);
+}
+.azi-rand.e-acum .azi-rand__dreapta{color:var(--primary);font-weight:700}
+.azi-rand.e-trecut{opacity:.5}
+.azi-rand.e-restant .azi-rand__dreapta{color:var(--danger);font-weight:700}
+.azi-rand.e-azi .azi-rand__dreapta{color:var(--primary);font-weight:700}
+.nav__item--azi .ic{color:var(--primary)}
+
 /* o bifă cu explicație dedesubt, pentru alegeri care merită lămurite */
 .bifa{
   display:flex;align-items:flex-start;gap:var(--sp-3);cursor:pointer;
