@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 18;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 19;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -3740,6 +3740,62 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     return d;
   }
 
+  /**
+   * Verifică adresa și spune ce e pornit acolo. Nu cere nici cont, nici cheie:
+   * întreabă Moodle-ul cu o cheie inventată și citește ce fel de refuz vine
+   * înapoi — refuzurile lui se deosebesc între ele.
+   */
+  async function verificaMoodle(site) {
+    if (!api() || !api().moodle_verifica) {
+      throw new Error('Verificarea merge doar în aplicația de pe calculator.');
+    }
+    const r = await api().moodle_verifica(site);
+    if (!r || !r.ok) throw new Error((r && r.eroare) || 'Nu am putut verifica adresa.');
+
+    const linii = [];
+    const s = r.servicii || {}, p = r.parola || {};
+
+    if (s.retea) return { rau: true, text: 'Nu ajung la adresa asta: ' + s.retea };
+    if (s.nu_e_json || s.http === 404) {
+      return {
+        rau: true,
+        text: 'Adresa nu pare a fi pagina de pornire a unui Moodle. Pune doar ' +
+              'partea până la prima bară — fără /my, /login sau /course. Dacă ' +
+              'Moodle-ul stă într-un subfolder, include-l (ex. …ro/moodle).'
+      };
+    }
+
+    const codS = String((s.json && (s.json.errorcode || '')) || '');
+    const mesajS = String((s.json && (s.json.message || s.json.error || '')) || '');
+    const serviciiPornite = codS === 'invalidtoken' || /invalid token/i.test(mesajS);
+    const serviciiOprite = /enablews|not enabled|disabled/i.test(codS + ' ' + mesajS);
+
+    linii.push('Adresa e un Moodle: da.');
+    if (serviciiPornite) {
+      linii.push('Serviciile web: pornite — cheia de securitate ar trebui să meargă.');
+    } else if (serviciiOprite) {
+      linii.push('Serviciile web: OPRITE de facultate. Nici cheia, nici parola nu au ' +
+                 'cum să meargă. Rămâne varianta cu calendarul, mai jos.');
+    } else {
+      linii.push('Serviciile web: n-am putut spune sigur (' + (codS || 'fără cod') + ').');
+    }
+
+    const codP = String((p.json && (p.json.errorcode || '')) || '');
+    const mesajP = String((p.json && (p.json.error || '')) || '');
+    if (/invalidlogin/i.test(codP)) {
+      linii.push('Conectarea cu parola: merge — ai greșit doar utilizatorul sau parola.');
+    } else if (/enablemobilewebservice|mobile/i.test(codP + ' ' + mesajP)) {
+      linii.push('Serviciul pentru aplicația de mobil: OPRIT. De asta nu apare nici ' +
+                 'pagina „Chei de securitate” în Moodle.');
+    } else if (/enablews/i.test(codP)) {
+      linii.push('Conectarea cu parola: nu, serviciile web sunt oprite.');
+    } else if (codP || mesajP) {
+      linii.push('Conectarea cu parola: răspuns neașteptat (' + (codP || mesajP) + ').');
+    }
+
+    return { rau: serviciiOprite, text: linii.join(' ') };
+  }
+
   /* Mesaje pentru ce poate răspunde Moodle când ceri o cheie cu parola. */
   const ERORI_LOGIN = [
     [/invalidlogin|invalid ?login/i,
@@ -4285,6 +4341,12 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     if (!el) return;
     el.textContent = text || '';
     el.classList.toggle('e-rau', !!rau);
+    // mesajul stă sus, iar apăsarea poate fi jos, în pliant: dacă e o veste
+    // proastă, o aducem în dreptul ochilor, altfel pare că n-a făcut nimic
+    if (rau) {
+      try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+      catch (e) { el.scrollIntoView(); }
+    }
   }
 
   function rezumatCurs(c) {
@@ -4423,6 +4485,21 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   }
 
   function actualizeazaContMoodle() {
+    // În browser nu există puntea către Moodle: serverul facultății nu dă voie
+    // unei pagini străine să citească de la el. Mai bine spunem asta de la
+    // început decât să lăsăm butoane care oricum n-au ce face.
+    const arePunte = !!(api() && api().moodle_api);
+    ['#moodleConecteaza', '#moodleConecteazaCheie', '#moodleVerifica', '#moodleAduTot']
+      .forEach(sel => { const b = $(sel); if (b) b.disabled = !arePunte; });
+    if (!arePunte) {
+      $('#moodleAduTot').hidden = true;
+      $('#moodleDeconecteaza').hidden = true;
+      stareCont('Legarea contului merge doar în aplicația de pe calculator — browserul ' +
+                'n-are voie să ceară nimic de la serverul facultății. Pe telefon, ' +
+                'informația ajunge prin sincronizare.');
+      return;
+    }
+
     const legat = !!((moodle().site || '') && localGet(CHEIE_MOODLE));
     $('#moodleAduTot').hidden = !legat;
     $('#moodleDeconecteaza').hidden = !legat;
@@ -5042,6 +5119,21 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     });
     pe('#moodleParola', 'keydown', e => {
       if (e.key === 'Enter') { e.preventDefault(); $('#moodleConecteaza').click(); }
+    });
+
+    pe('#moodleVerifica', 'click', async () => {
+      const site = ($('#moodleSite').value || '').trim().replace(/\/+$/, '');
+      if (!site) { stareCont('Pune întâi adresa Moodle.', true); return; }
+      stareCont('Verific adresa…');
+      $('#moodleVerifica').disabled = true;
+      try {
+        const r = await verificaMoodle(site);
+        stareCont(r.text, r.rau);
+      } catch (e) {
+        stareCont(e.message || 'Nu am putut verifica adresa.', true);
+      } finally {
+        $('#moodleVerifica').disabled = false;
+      }
     });
 
     pe('#moodleConecteazaCheie', 'click', async () => {

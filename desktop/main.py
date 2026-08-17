@@ -275,6 +275,45 @@ class Api:
                               "chiar legătura de export din Moodle."}
         return {"ok": True, "text": text}
 
+    def moodle_verifica(self, site):
+        """
+        Spune ce se poate face la adresa asta — fără cont, fără cheie, fără
+        parolă. Moodle răspunde cu erori care se deosebesc între ele, iar din
+        ele se vede dacă serviciile web sunt pornite și dacă merge conectarea
+        cu parola. Așa afli de ce nu merge, în loc să ghicești.
+        """
+        site = str(site or "").strip().rstrip("/")
+        if not site.lower().startswith(("http://", "https://")):
+            return {"ok": False, "eroare": "Adresa trebuie să înceapă cu https://"}
+
+        def intreaba(cale, camp):
+            cerere = urllib.request.Request(
+                site + cale, data=urllib.parse.urlencode(camp).encode("utf-8"),
+                headers={"User-Agent": "UniNotes",
+                         "Content-Type": "application/x-www-form-urlencoded"})
+            try:
+                with urllib.request.urlopen(cerere, timeout=25) as r:
+                    brut = r.read(MAX_RASPUNS + 1)
+                    tip = r.headers.get("Content-Type", "")
+            except urllib.error.HTTPError as e:
+                return {"http": e.code}
+            except Exception as e:                                # noqa: BLE001
+                return {"retea": str(e)}
+            text = brut.decode("utf-8", errors="replace")
+            try:
+                return {"json": json.loads(text)}
+            except Exception:                                     # noqa: BLE001
+                return {"nu_e_json": True, "tip": tip, "inceput": text[:120]}
+
+        return {
+            "ok": True,
+            "servicii": intreaba("/webservice/rest/server.php", {
+                "wstoken": "verificare", "wsfunction": "core_webservice_get_site_info",
+                "moodlewsrestformat": "json"}),
+            "parola": intreaba("/login/token.php", {
+                "username": "", "password": "", "service": "moodle_mobile_app"}),
+        }
+
     def moodle_login(self, site, utilizator, parola):
         """
         Cere Moodle-ului o cheie pentru contul tău, dând utilizatorul și parola
