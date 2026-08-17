@@ -152,6 +152,24 @@ class Server(BaseHTTPRequestHandler):
                           "error": "Web services are not enabled",
                           "message": "Web services are not enabled"})
             return
+        if fel == "xml":
+            # unele instalari arunca eroarea in XML, desi am cerut JSON: se
+            # intampla inainte sa apuce sa aleaga formatul
+            if cale == "/login/token.php":
+                self.trimite({"error": "A lipsit un parametru obligatoriu (username)",
+                              "errorcode": "missingparam"})
+                return
+            brut = (b'<?xml version="1.0" encoding="UTF-8" ?>\n'
+                    b'<EXCEPTION class="core\\exception\\moodle_exception">\n'
+                    b'<ERRORCODE>invalidtoken</ERRORCODE>\n'
+                    b'<MESSAGE>Token nu este valid</MESSAGE>\n'
+                    b'</EXCEPTION>')
+            self.send_response(200)
+            self.send_header("Content-Type", "application/xml; charset=utf-8")
+            self.send_header("Content-Length", str(len(brut)))
+            self.end_headers()
+            self.wfile.write(brut)
+            return
         if fel == "mobil_oprit":
             if cale == "/login/token.php":
                 self.trimite({"error": "Mobile web service is not enabled",
@@ -311,6 +329,7 @@ def probe(window):
         out["verifica_ws_oprit"] = verifica("ws_oprit")
         out["verifica_mobil_oprit"] = verifica("mobil_oprit")
         out["verifica_nu_e_moodle"] = verifica("nu_e_moodle")
+        out["verifica_raspuns_xml"] = verifica("xml")
         MOD["fel"] = "normal"
 
         # ---- parolă greșită: mesaj pe înțeles, fără să se lege ----
