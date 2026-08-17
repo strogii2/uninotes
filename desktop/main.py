@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import socketserver
+import subprocess
 import sys
 import tempfile
 import threading
@@ -244,6 +245,44 @@ class Api:
                     pass
             return True
         except Exception:                                         # noqa: BLE001
+            return False
+
+    def notifica(self, titlu, corp):
+        """
+        O notificare adevărată de Windows.
+
+        În fereastra aplicației, motorul de browser refuză din start
+        notificările paginii — nu întreabă pe nimeni, răspunde „nu” și gata.
+        Așa că amintirile pentru termene nu ajungeau nicăieri, tăcut. Aici
+        ieșim din browser și o cerem chiar sistemului.
+        """
+        if os.name != "nt":
+            return False
+
+        def sq(s):
+            # ghilimelele simple se dublează: așa se scapă textul în PowerShell
+            return "'" + str(s or "").replace("'", "''")[:180] + "'"
+
+        ps = (
+            "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications,"
+            " ContentType=WindowsRuntime] | Out-Null;"
+            "$x=[Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent("
+            "[Windows.UI.Notifications.ToastTemplateType]::ToastText02);"
+            "$n=$x.GetElementsByTagName('text');"
+            "$n.Item(0).AppendChild($x.CreateTextNode(%s))|Out-Null;"
+            "$n.Item(1).AppendChild($x.CreateTextNode(%s))|Out-Null;"
+            "$t=[Windows.UI.Notifications.ToastNotification]::new($x);"
+            "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("
+            "'Microsoft.Windows.Computer').Show($t)" % (sq(titlu), sq(corp))
+        )
+        try:
+            subprocess.Popen(
+                ["powershell", "-NoProfile", "-NonInteractive",
+                 "-ExecutionPolicy", "Bypass", "-Command", ps],
+                creationflags=0x08000000,          # fără fereastră neagră de consolă
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return True
+        except Exception:                                     # noqa: BLE001
             return False
 
     def open_link(self, url):

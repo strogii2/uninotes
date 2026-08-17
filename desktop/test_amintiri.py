@@ -113,6 +113,10 @@ def probe(window):
     out = {}
     try:
         out["aplicatia_a_pornit"] = asteapta_aplicatia(window)
+        # in fereastra de Windows, notificarile paginii sunt refuzate din start:
+        # amintirile trebuie sa plece prin sistem, nu prin browser
+        out["browserul_refuza_notificarile"] = window.evaluate_js(
+            "(typeof Notification === 'undefined') ? 'lipseste' : Notification.permission")
         window.evaluate_js(FALS)
         window.evaluate_js("document.querySelector('#termeneBtn').click(); 'ok'")
         time.sleep(1.2)
@@ -191,6 +195,8 @@ def probe(window):
         else:
             out["ics"] = "fisierul nu s-a scris"
 
+        # amintirile au plecat prin sistem, nu prin Notification al paginii
+        out["anunturi_prin_sistem"] = app.ANUNTURI_SISTEM
         out["eroare_final"] = window.evaluate_js("window.__eroare || ''")
     except Exception as exc:                                  # noqa: BLE001
         out["exceptie"] = repr(exc)
@@ -206,6 +212,16 @@ def run():
     # „Salvează ca” ar deschide o fereastră a sistemului, care ar bloca testul:
     # o înlocuim cu o scriere directă și ținem minte unde a scris.
     app.CALE_SALVATA = []
+
+    # Notificarea adevărată de Windows ar umple ecranul cu bule în timpul
+    # testului; o înlocuim cu o însemnare, ca să vedem totuși ce s-a cerut.
+    app.ANUNTURI_SISTEM = []
+
+    def notifica(self, titlu, corp):
+        app.ANUNTURI_SISTEM.append({"titlu": titlu, "corp": corp})
+        return True
+
+    app.Api.notifica = notifica
 
     def save_file(self, suggested_name, content):
         cale = app.DATA_DIR / suggested_name
