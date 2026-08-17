@@ -1,8 +1,8 @@
 """
-Verifică desenul în fereastra reală (WebView2), pas cu pas:
-pânza primește dimensiuni, liniile se înregistrează, desenul ajunge în notiță.
-
-Rulează pe fișierele din folderul proiectului, nu pe cele împachetate în .exe.
+Verifică desenul făcut chiar în notiță, în fereastra reală: blocul apare între
+rânduri, pânza încape pe ecran și primește atingerea, fiecare pensulă lasă altă
+urmă, desenul se salvează singur când ieși din el și se poate relua mai târziu
+peste ce era deja desenat.
 """
 
 import json
@@ -21,157 +21,129 @@ import webview
 import main as app
 
 
-PROBA = r"""
+BLOC = r"""
 (function () {
   var out = {};
-  var c = document.querySelector('#desenCanvas');
-  if (!c) { out.eroare = 'lipseste panza'; return JSON.stringify(out); }
+  // într-o notiță pot sta mai multe desene: ne uităm la cel deschis acum
+  var fig = document.querySelector('#editorFlux .ed-desen.is-activ') ||
+            document.querySelector('#editorFlux .ed-desen');
+  out.bloc_exista = !!fig;
+  out.cate_desene = document.querySelectorAll('#editorFlux .ed-desen').length;
+  if (!fig) return JSON.stringify(out);
+  out.bloc_activ = fig.classList.contains('is-activ');
 
-  out.dialog_deschis = document.querySelector('#desenDlg').open;
-  out.buffer = c.width + 'x' + c.height;
-  out.css = c.clientWidth + 'x' + c.clientHeight;
-  out.panza_masurata = c.width > 300 && c.height > 150;
-
-  function numara() {
-    var d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data, n = 0;
-    for (var i = 0; i < d.length; i += 4) {
-      if (d[i] < 200 || d[i + 1] < 200 || d[i + 2] < 200) n++;
-    }
-    return n;
-  }
-  out.pixeli_inainte = numara();
+  var c = fig.querySelector('canvas.desen-panza');
+  out.panza_exista = !!c;
+  out.pensule = fig.querySelectorAll('.desen-pensula').length;
+  out.culori = fig.querySelectorAll('.desen-culoare').length;
+  out.glisor = !!fig.querySelector('.desen-bara input[type="range"]');
+  out.paleta_libera = !!fig.querySelector('.desen-oricare input[type="color"]');
+  out.buton_gata = !!fig.querySelector('[data-dz="gata"]');
+  if (!c) return JSON.stringify(out);
 
   var r = c.getBoundingClientRect();
+  var W = document.documentElement.clientWidth;
+  out.ecran = W;
+  out.latime_panza = Math.round(r.width);
+  out.inaltime_panza = Math.round(r.height);
+  out.pixeli_panza = c.width + 'x' + c.height;
+  out.incape_in_ecran = r.left >= -2 && r.right <= W + 2;
+  out.se_vede = r.width > 40 && r.height > 40;
 
-  // Evenimentele trimise direct pânzei ocolesc verificarea a ce e deasupra ei.
-  // Un strat invizibil ar opri degetul real, dar nu și testul, așa că întrebăm
-  // pagina cine chiar primește atingerea în câteva puncte de pe pânză.
-  out.cine_primeste = [[0.5, 0.5], [0.1, 0.1], [0.9, 0.9]].map(function (p) {
+  // atingerea trebuie sa ajunga la panza, nu la sfatul de deasupra
+  var puncte = [[0.5, 0.5], [0.2, 0.3], [0.8, 0.7]];
+  out.cine_primeste = puncte.map(function (p) {
     var el = document.elementFromPoint(r.left + r.width * p[0], r.top + r.height * p[1]);
     if (!el) return 'nimic';
-    return el.id ? '#' + el.id : (el.tagName + '.' + (el.className || '')).slice(0, 40);
+    if (el === c) return 'panza';
+    return el.className || el.tagName;
   });
-  out.panza_primeste_atingerea = out.cine_primeste.every(function (x) { return x === '#desenCanvas'; });
-  out.touch_action = getComputedStyle(c).touchAction;
-
-  var W = document.documentElement.clientWidth, H = document.documentElement.clientHeight;
-  out.ecran = W + 'x' + H;
-  out.incape_in_ecran = r.left >= -2 && r.top >= -2 &&
-                        r.right <= W + 2 && r.bottom <= H + 2;
-
-  function ev(tip, x, y, id, fel) {
-    c.dispatchEvent(new PointerEvent(tip, {
-      pointerId: id, bubbles: true, cancelable: true,
-      pointerType: fel, isPrimary: true,
-      clientX: r.left + x, clientY: r.top + y
-    }));
-  }
-  // o linie cu mouse-ul
-  ev('pointerdown', 60, 60, 1, 'mouse');
-  ev('pointermove', 160, 110, 1, 'mouse');
-  ev('pointermove', 260, 70, 1, 'mouse');
-  ev('pointermove', 360, 160, 1, 'mouse');
-  ev('pointerup', 360, 160, 1, 'mouse');
-  out.pixeli_dupa_mouse = numara();
-
-  // si una cu degetul
-  ev('pointerdown', 60, 220, 2, 'touch');
-  ev('pointermove', 200, 250, 2, 'touch');
-  ev('pointermove', 340, 210, 2, 'touch');
-  ev('pointerup', 340, 210, 2, 'touch');
-  out.pixeli_dupa_deget = numara();
-
-  out.sfat_ascuns = document.querySelector('#desenSfat').hidden;
-  out.buton_inapoi_activ = !document.querySelector('#desenInapoi').disabled;
+  out.panza_primeste_atingerea = out.cine_primeste.every(function (x) { return x === 'panza'; });
   return JSON.stringify(out);
 })()
 """
 
 
-URMA_PENSULEI = r"""
-(function () {
-  var out = {};
-  var c = document.querySelector('#desenCanvas');
-  var g = c.getContext('2d');
+# desenează o linie orizontală cu pensula cerută și citește pixelii din jurul ei
+URMA = r"""
+(function (tip, frac) {
+  var c = document.querySelector('#editorFlux canvas.desen-panza');
+  if (!c) return JSON.stringify({panza: false});
+
+  var b = document.querySelector('.desen-pensula[data-pensula="' + tip + '"]');
+  if (b) b.click();
+  var s = document.querySelector('.desen-bara input[type="range"]');
+  if (s) { s.value = '18'; s.dispatchEvent(new Event('input', {bubbles: true})); }
+
   var r = c.getBoundingClientRect();
-
-  out.pensule = document.querySelectorAll('.desen-pensula').length;
-  out.culori = document.querySelectorAll('#desenCulori .desen-culoare').length;
-  out.glisor = !!document.querySelector('#desenGrosime');
-  out.paleta_libera = !!document.querySelector('#desenOricare');
-
-  // alegem pensula si o culoare inchisa, apoi o grosime mare
-  var b = Array.prototype.slice.call(document.querySelectorAll('.desen-pensula'))
-    .filter(function (x) { return x.getAttribute('aria-label') === 'PENSULA'; })[0];
-  if (!b) { out.eroare = 'nu gasesc pensula PENSULA'; return JSON.stringify(out); }
-  b.click();
-  document.querySelectorAll('#desenCulori .desen-culoare')[0].click();
-  var s = document.querySelector('#desenGrosime');
-  s.value = '14';
-  s.dispatchEvent(new Event('input', {bubbles: true}));
-  out.grosime_setata = s.value;
-  out.bulina = (document.querySelector('#desenBulina') || {}).style
-    ? document.querySelector('#desenBulina').style.width : '';
-
-  function ev(tip, x, y) {
-    c.dispatchEvent(new PointerEvent(tip, {
-      pointerId: 1, bubbles: true, cancelable: true, pointerType: 'mouse',
-      isPrimary: true, clientX: r.left + x, clientY: r.top + y
+  var y = r.top + r.height * frac;
+  var x0 = r.left + r.width * 0.15, x1 = r.left + r.width * 0.85;
+  var id = 30 + Math.round(frac * 100);
+  function trimite(nume, x) {
+    c.dispatchEvent(new PointerEvent(nume, {
+      pointerId: id, clientX: x, clientY: y, bubbles: true, isPrimary: true
     }));
   }
-  var Y = Math.round(r.height / 2);
-  ev('pointerdown', 60, Y);
-  ev('pointermove', 200, Y);
-  ev('pointermove', 340, Y);
-  ev('pointerup', 340, Y);
+  trimite('pointerdown', x0);
+  for (var i = 1; i <= 12; i++) trimite('pointermove', x0 + (x1 - x0) * i / 12);
+  trimite('pointerup', x1);
 
-  function pixel(x, y) {
-    var d = g.getImageData(Math.round(x * (c.width / r.width)),
-                           Math.round(y * (c.height / r.height)), 1, 1).data;
+  var g = c.getContext('2d');
+  var k = c.width / r.width;                 // din pixeli de ecran în pixeli de pânză
+  var px = Math.round((x0 + (x1 - x0) / 2 - r.left) * k);
+  var py = Math.round((y - r.top) * k);
+  function ia(dy) {
+    var yy = Math.max(0, Math.min(c.height - 1, py + Math.round(dy * k)));
+    var d = g.getImageData(px, yy, 1, 1).data;
     return [d[0], d[1], d[2]];
   }
-  out.miez = pixel(200, Y);                    // chiar pe linie
-  out.langa = pixel(200, Y + 14);              // putin sub linie
-  out.departe = pixel(200, Y + 60);            // hartie curata
+  return JSON.stringify({
+    panza: true,
+    linii: (document.querySelectorAll('.desen-pensula.is-active').length),
+    miez: ia(0), langa: ia(14), departe: ia(30)
+  });
+})
+"""
+
+
+STARE_NOTITA = r"""
+(function () {
+  var out = {};
+  var copii = Array.prototype.slice.call(document.querySelectorAll('#editorFlux > *'));
+  out.bucati = copii.map(function (e) { return e.tagName.toLowerCase(); });
+  out.text = copii.filter(function (e) { return e.tagName === 'TEXTAREA'; })
+                  .map(function (t) { return t.value; }).join('|');
+  var fig = document.querySelector('#editorFlux .ed-desen');
+  out.cate_desene = document.querySelectorAll('#editorFlux .ed-desen').length;
+  out.desen_in_notita = !!fig;
+  out.desen_activ = !!(fig && fig.classList.contains('is-activ'));
+  if (fig) {
+    var im = fig.querySelector('img');
+    out.imagine_cu_sursa = !!(im && im.src && im.src.length > 60);
+    out.buton_deseneaza = !!fig.querySelector('[data-act="deseneaza"]');
+    var r = fig.getBoundingClientRect();
+    var W = document.documentElement.clientWidth;
+    out.incape_in_ecran = r.left >= -2 && r.right <= W + 2;
+    out.inaltime = Math.round(r.height);
+  }
   return JSON.stringify(out);
 })()
 """
 
-RADIERA = r"""
+
+# cât de închisă e imaginea: dacă desenul vechi s-a întors ca fundal, nu e toată albă
+CAT_E_DESENAT = r"""
 (function () {
-  var out = {};
-  var c = document.querySelector('#desenCanvas');
+  var c = document.querySelector('#editorFlux canvas.desen-panza');
+  if (!c) return JSON.stringify({panza: false});
   var g = c.getContext('2d');
-  var r = c.getBoundingClientRect();
-  function ev(tip, x, y, id) {
-    c.dispatchEvent(new PointerEvent(tip, {
-      pointerId: id, bubbles: true, cancelable: true, pointerType: 'mouse',
-      isPrimary: true, clientX: r.left + x, clientY: r.top + y
-    }));
+  var d = g.getImageData(0, 0, c.width, c.height).data;
+  var colorati = 0, total = 0;
+  for (var i = 0; i < d.length; i += 4 * 37) {          // din 37 în 37, e destul
+    total++;
+    if (d[i] < 240 || d[i + 1] < 240 || d[i + 2] < 240) colorati++;
   }
-  function pixel(x, y) {
-    var d = g.getImageData(Math.round(x * (c.width / r.width)),
-                           Math.round(y * (c.height / r.height)), 1, 1).data;
-    return [d[0], d[1], d[2]];
-  }
-  var Y = Math.round(r.height / 2);
-
-  // intai o linie cu pixul
-  Array.prototype.slice.call(document.querySelectorAll('.desen-pensula'))
-    .filter(function (x) { return x.getAttribute('aria-label') === 'Pix'; })[0].click();
-  document.querySelectorAll('#desenCulori .desen-culoare')[0].click();
-  ev('pointerdown', 60, Y, 1); ev('pointermove', 200, Y, 1);
-  ev('pointermove', 340, Y, 1); ev('pointerup', 340, Y, 1);
-  out.dupa_pix = pixel(200, Y);
-
-  // apoi trecem radiera peste ea
-  Array.prototype.slice.call(document.querySelectorAll('.desen-pensula'))
-    .filter(function (x) { return x.getAttribute('aria-label') === 'Radieră'; })[0].click();
-  ev('pointerdown', 60, Y, 2); ev('pointermove', 200, Y, 2);
-  ev('pointermove', 340, Y, 2); ev('pointerup', 340, Y, 2);
-  out.dupa_radiera = pixel(200, Y);
-  out.a_sters = out.dupa_radiera[0] > 240 && out.dupa_radiera[1] > 240 && out.dupa_radiera[2] > 240;
-  return JSON.stringify(out);
+  return JSON.stringify({panza: true, total: total, colorati: colorati});
 })()
 """
 
@@ -180,98 +152,189 @@ def citeste(v):
     return json.loads(v) if isinstance(v, (str, bytes, bytearray)) else v
 
 
+def asteapta_aplicatia(window, secunde=40):
+    for _ in range(int(secunde * 2)):
+        try:
+            if window.evaluate_js("!!document.querySelector('#newNoteBtn')"):
+                return True
+        except Exception:                                    # noqa: BLE001
+            pass
+        time.sleep(0.5)
+    return False
+
+
 def probe(window):
     out = {}
     try:
-        time.sleep(5)
-
-        out["eroare_pornire"] = window.evaluate_js("window.__eroare || ''")
-
-        # o notiță nouă, ca butonul de desen să fie activ
+        out["aplicatia_a_pornit"] = asteapta_aplicatia(window)
         window.evaluate_js("document.querySelector('#newNoteBtn').click(); 'ok'")
-        time.sleep(1)
-        out["buton_desen_exista"] = window.evaluate_js("!!document.querySelector('#desenBtn')")
-
-        window.evaluate_js("document.querySelector('#desenBtn').click(); 'ok'")
         time.sleep(1.5)
 
-        out.update(json.loads(window.evaluate_js(PROBA)))
-
-        # Aceeași verificare la lățime de telefon: acolo bara de unelte se rearanjează
-        # și pânza poate rămâne fără înălțime sau poate ajunge sub altceva.
-        window.evaluate_js("document.querySelector('#desenInchide').click(); 'ok'")
-        window.resize(400, 850)
-        time.sleep(2)
-        window.evaluate_js("document.querySelector('#desenBtn').click(); 'ok'")
-        time.sleep(2)
-        out["telefon"] = json.loads(window.evaluate_js(PROBA))
-
-        # iPhone-ul are ecran dens (2–3 puncte fizice per punct CSS). Îl imităm,
-        # fiindcă acolo pânza își dublează rezoluția și își poate umfla layout-ul.
         window.evaluate_js("""
-            document.querySelector('#desenInchide').click();
-            Object.defineProperty(window, 'devicePixelRatio',
-                                  {get: function () { return 2; }, configurable: true});
+            var ti = document.querySelector('#titleInput');
+            ti.value = 'PROBA DESEN';
+            ti.dispatchEvent(new Event('input', {bubbles: true}));
+            var t = document.querySelector('#editorFlux > textarea');
+            t.focus();
+            t.value = 'Curs 5 — schema montajului';
+            t.dispatchEvent(new Event('input', {bubbles: true}));
+            t.setSelectionRange(t.value.length, t.value.length);
             'ok'
         """)
-        time.sleep(0.5)
+        time.sleep(1)
+
+        # ---- desenul se deschide chiar în notiță ----
         window.evaluate_js("document.querySelector('#desenBtn').click(); 'ok'")
-        time.sleep(3)
-        out["telefon_dpr2"] = json.loads(window.evaluate_js(PROBA))
-        out["latime_pagina"] = window.evaluate_js("document.documentElement.clientWidth")
+        time.sleep(2)
+        out["dupa_apasare"] = citeste(window.evaluate_js(BLOC))
+
+        # ---- fiecare pensulă lasă altă urmă ----
+        for pensula, frac in (("pix", 0.22), ("marker", 0.5), ("neon", 0.78)):
+            out["urma_" + pensula] = citeste(
+                window.evaluate_js("(" + URMA + ")('%s', %s)" % (pensula, frac)))
+            time.sleep(0.4)
+
+        # radiera trece peste linia de pix și o scoate
+        out["urma_radiera"] = citeste(
+            window.evaluate_js("(" + URMA + ")('radiera', 0.22)"))
+        time.sleep(0.4)
+
+        out["cu_desen_pe_panza"] = citeste(window.evaluate_js(CAT_E_DESENAT))
+
+        # ---- o apăsare în text încheie desenul și îl salvează ----
+        window.evaluate_js("""
+            var t = document.querySelector('#editorFlux > textarea');
+            t.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, pointerId: 9}));
+            t.click();
+            'ok'
+        """)
+        time.sleep(2.5)
+        out["dupa_incheiere"] = citeste(window.evaluate_js(STARE_NOTITA))
+
+        if app.DATA_FILE.exists():
+            date = json.loads(app.DATA_FILE.read_text(encoding="utf-8"))
+            nota = next((n for n in date.get("notes") or []
+                         if n.get("title") == "PROBA DESEN"), {})
+            c = nota.get("content") or ""
+            out["marcaj_in_notita"] = "uninotes:d" in c
+            out["textul_a_ramas"] = "montajului" in c
+
+        imagini = app.DATA_DIR / "imagini"
+        out["fisiere_pe_disc"] = sorted(p.name for p in imagini.glob("*")) \
+            if imagini.exists() else []
+
+        # ---- la lățime de telefon blocul trebuie să încapă ----
+        window.resize(400, 850)
+        time.sleep(2)
+        out["pe_telefon"] = citeste(window.evaluate_js(STARE_NOTITA))
+
+        # uneltele trebuie să încapă și pe telefon, cu butoane cât degetul
+        window.evaluate_js("""
+            var b = document.querySelector('#editorFlux [data-act="deseneaza"]');
+            if (b) b.click();
+            'ok'
+        """)
+        time.sleep(2.5)
+        out["panza_pe_telefon"] = citeste(window.evaluate_js(BLOC))
+        out["bara_pe_telefon"] = citeste(window.evaluate_js(r"""
+            (function () {
+              var bara = document.querySelector('#editorFlux .desen-bara');
+              if (!bara) return JSON.stringify({bara: false});
+              var W = document.documentElement.clientWidth;
+              var copii = Array.prototype.slice.call(bara.querySelectorAll('button,input'));
+              var iese = copii.filter(function (e) {
+                var r = e.getBoundingClientRect();
+                return r.left < -2 || r.right > W + 2;
+              });
+              var mici = copii.filter(function (e) {
+                var r = e.getBoundingClientRect();
+                return r.height > 0 && r.height < 30;
+              });
+              return JSON.stringify({
+                bara: true, ecran: W, unelte: copii.length,
+                iese_din_ecran: iese.length, prea_mici: mici.length,
+                inaltime_bara: Math.round(bara.getBoundingClientRect().height)
+              });
+            })()
+        """))
+        window.evaluate_js("""
+            var b = document.querySelector('#editorFlux [data-dz="gata"]');
+            if (b) b.click();
+            'ok'
+        """)
+        time.sleep(2)
+
         window.resize(1320, 860)
         time.sleep(1.5)
 
-        # --- uneltele noi: fiecare pensulă trebuie să lase altă urmă ---
-        window.evaluate_js("document.querySelector('#desenInchide').click(); 'ok'")
-        time.sleep(1)
-        out["unelte"] = {}
-        out["s_a_deschis"] = {}
-        for pensula in ("Pix", "Marker", "Neon"):
-            window.evaluate_js("document.querySelector('#desenBtn').click(); 'ok'")
-            time.sleep(1.5)
-            out["s_a_deschis"][pensula.lower()] = window.evaluate_js(
-                "document.querySelector('#desenDlg').open")
-            out["unelte"][pensula.lower()] = citeste(window.evaluate_js(
-                URMA_PENSULEI.replace("PENSULA", pensula)))
-            window.evaluate_js("document.querySelector('#desenInchide').click(); 'ok'")
-            time.sleep(0.8)
-
-        # radiera trebuie să lase hârtia curată acolo unde trece
-        window.evaluate_js("document.querySelector('#desenBtn').click(); 'ok'")
-        time.sleep(2)
-        out["s_a_deschis"]["radiera"] = window.evaluate_js(
-            "document.querySelector('#desenDlg').open")
-        out["unelte"]["radiera"] = citeste(window.evaluate_js(RADIERA))
-        window.evaluate_js("document.querySelector('#desenInchide').click(); 'ok'")
-        time.sleep(1)
-
-        # desenul final, cel care ajunge în notiță
-        window.evaluate_js("document.querySelector('#desenBtn').click(); 'ok'")
+        # ---- notița redeschisă: desenul se poate relua peste ce era ----
+        window.evaluate_js("""
+            var carduri = Array.prototype.slice.call(document.querySelectorAll('.note-card'));
+            var alta = carduri.filter(function (c) { return !/PROBA DESEN/.test(c.textContent); })[0];
+            if (alta) alta.click();
+            'ok'
+        """)
         time.sleep(1.5)
-        window.evaluate_js(PROBA)
-        time.sleep(0.5)
+        window.evaluate_js("""
+            var carduri = Array.prototype.slice.call(document.querySelectorAll('.note-card'));
+            var a = carduri.filter(function (c) { return /PROBA DESEN/.test(c.textContent); })[0];
+            if (a) a.click();
+            'ok'
+        """)
+        time.sleep(2)
+        out["dupa_redeschidere"] = citeste(window.evaluate_js(STARE_NOTITA))
 
-        # salvarea în notiță: desenul trebuie să se vadă printre rânduri
-        window.evaluate_js("document.querySelector('#desenSalveaza').click(); 'ok'")
+        window.evaluate_js("""
+            var b = document.querySelector('#editorFlux [data-act="deseneaza"]');
+            if (b) b.click();
+            'ok'
+        """)
         time.sleep(2.5)
-        out["desen_vizibil_in_notita"] = window.evaluate_js(
-            "document.querySelectorAll('#editorFlux img').length")
-        out["desen_are_sursa"] = window.evaluate_js(
-            "Array.prototype.slice.call(document.querySelectorAll('#editorFlux img'))"
-            ".filter(function (i) { return i.src && i.src.length > 40; }).length")
-        out["cursor_sub_desen"] = window.evaluate_js(
-            "!!(document.activeElement && document.activeElement.classList"
-            ".contains('ed-text'))")
+        out["reluat"] = citeste(window.evaluate_js(BLOC))
+        out["desenul_vechi_s_a_intors"] = citeste(window.evaluate_js(CAT_E_DESENAT))
+
+        # o linie nouă peste desenul vechi, apoi „Gata”
+        out["urma_peste_vechi"] = citeste(
+            window.evaluate_js("(" + URMA + ")('pix', 0.35)"))
+        time.sleep(0.4)
+        window.evaluate_js("""
+            var b = document.querySelector('#editorFlux [data-dz="gata"]');
+            if (b) b.click();
+            'ok'
+        """)
+        time.sleep(2.5)
+        out["dupa_gata"] = citeste(window.evaluate_js(STARE_NOTITA))
+
+        if imagini.exists():
+            out["fisiere_la_final"] = sorted(p.name for p in imagini.glob("*"))
+
+        # ---- desen început și lăsat gol: blocul nu trebuie să rămână ----
+        window.evaluate_js("""
+            var c = document.querySelectorAll('#editorFlux > textarea');
+            var ultim = c[c.length - 1];
+            ultim.focus();
+            ultim.setSelectionRange(ultim.value.length, ultim.value.length);
+            document.querySelector('#desenBtn').click();
+            'ok'
+        """)
+        time.sleep(2)
+        out["gol_deschis"] = citeste(window.evaluate_js(BLOC))
+        window.evaluate_js("""
+            var t = document.querySelector('#editorFlux > textarea');
+            t.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, pointerId: 11}));
+            'ok'
+        """)
+        time.sleep(2)
+        out["gol_dupa_iesire"] = citeste(window.evaluate_js(STARE_NOTITA))
         if app.DATA_FILE.exists():
             date = json.loads(app.DATA_FILE.read_text(encoding="utf-8"))
-            nota = (date.get("notes") or [{}])[0]
-            out["desen_in_notita"] = "uninotes:d" in (nota.get("content") or "")
+            nota = next((n for n in date.get("notes") or []
+                         if n.get("title") == "PROBA DESEN"), {})
+            c = nota.get("content") or ""
+            out["un_singur_desen_in_text"] = c.count("uninotes:d") == 1
 
-        imagini = app.DATA_DIR / "imagini"
-        out["fisiere_imagine"] = sorted(p.name for p in imagini.glob("*")) if imagini.exists() else []
         out["eroare_final"] = window.evaluate_js("window.__eroare || ''")
-    except Exception as exc:                                      # noqa: BLE001
+    except Exception as exc:                                  # noqa: BLE001
         out["exceptie"] = repr(exc)
     finally:
         print("REZULTAT " + json.dumps(out, ensure_ascii=False))
@@ -279,8 +342,6 @@ def probe(window):
 
 
 def run():
-    # Testul scrie notițe și imagini, așa că îl mutăm într-un folder al lui.
-    # Notițele reale ale utilizatorului rămân neatinse.
     app.DATA_DIR = Path(tempfile.mkdtemp(prefix="uninotes-desen-"))
     app.DATA_FILE = app.DATA_DIR / "notite.json"
     api = app.Api()

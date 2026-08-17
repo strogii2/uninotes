@@ -574,8 +574,14 @@ h1,h2,h3,p{margin:0}
   font:inherit;color:var(--fg-muted);padding:6px 10px;border-radius:var(--r-sm);
   min-height:34px;transition:background var(--t) var(--ease),color var(--t) var(--ease);
 }
+.ed-media__act{display:flex;align-items:center;gap:4px}
 .ed-media__btn:hover{
   background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--danger);
+}
+/* „Desenează” nu e o ștergere, deci nu se aprinde roșu ca vecinul lui */
+.ed-media__btn--desen{font-weight:600;color:var(--primary)}
+.ed-media__btn--desen:hover{
+  background:color-mix(in srgb,var(--primary) 14%,transparent);color:var(--primary);
 }
 
 .editor__foot{
@@ -1054,21 +1060,38 @@ body{-webkit-tap-highlight-color:transparent}
   padding:var(--sp-5) var(--sp-3);border:1px dashed var(--border-strong);border-radius:var(--r-md);
 }
 
-/* ---- desen ---- */
-.desen__top{gap:var(--sp-3)}
-.desen-unelte{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
-.desen-culori,.desen-grosimi{display:flex;align-items:center;gap:5px}
-.desen-culoare{
-  width:26px;height:26px;border-radius:var(--r-full);
-  /* pe fundal întunecat, negrul de desen ar fi invizibil fără conturul ăsta */
-  border:1px solid color-mix(in srgb,var(--fg) 35%,transparent);
-  transition:transform var(--t) var(--ease-out-back),box-shadow var(--t) var(--ease);
+/* ---- desen, chiar în notiță ----
+   Blocul de desen e o figură obișnuită din flux: pânza sus, uneltele sub ea.
+   Cât timp se desenează, blocul are un contur aprins, ca să se vadă unde
+   ajunge degetul. */
+.ed-desen{position:relative;min-width:0}
+.ed-desen.is-activ{
+  border-color:color-mix(in srgb,var(--primary) 55%,var(--border));
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 16%,transparent);
 }
-.desen-culoare:hover{transform:scale(1.12)}
-.desen-culoare.is-active{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--fg-soft);transform:scale(1.12)}
-#desenInapoi:disabled,#desenSterge:disabled{opacity:.35;pointer-events:none}
+.desen-panza{
+  display:block;width:100%;height:auto;background:#fff;cursor:crosshair;
+  touch-action:none;                    /* altfel telefonul derulează în loc să deseneze */
+  /* O pânză își ține mărimea proprie în chiar numărul ei de pixeli, iar pe
+     ecranele dense pixelii sunt de două-trei ori mai mulți decât locul de pe
+     ecran. Fără liniile astea s-ar umfla singură la fiecare măsurătoare, până
+     ar ieși din ecran. Regula e valabilă la fiecare nivel dintre marginea
+     ecranului și pânză, nu doar la pânză. */
+  min-width:0;min-height:0;
+}
+/* Sfatul stă peste pânză. Primește același raport al laturilor ca ea, deci
+   acoperă exact pânza, fără să știe cineva câți pixeli are bara de dedesubt. */
+.desen-sfat{
+  position:absolute;left:0;right:0;top:0;
+  display:grid;place-items:center;pointer-events:none;
+  color:#94A3B8;font-size:14px;padding:var(--sp-4);text-align:center;
+}
 
-/* ---- pensule ---- */
+/* ---- bara de unelte de sub pânză ---- */
+.desen-bara{
+  display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2);
+  padding:7px 8px;border-top:1px solid var(--border);background:var(--surface);
+}
 .desen-pensule{display:flex;align-items:center;gap:4px}
 .desen-pensula{
   width:38px;height:38px;border-radius:var(--r-md);display:grid;place-items:center;
@@ -1083,42 +1106,41 @@ body{-webkit-tap-highlight-color:transparent}
   color:var(--primary);
 }
 
-/* ---- corpul ferestrei: glisor pe margine, pânza în rest ---- */
-.desen-corp{flex:1;display:flex;min-height:0;min-width:0}
+/* grosimea: bulina arată din ce iese linia, glisorul o schimbă */
 .desen-marime{
-  flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:var(--sp-3);width:58px;padding:var(--sp-3) 0;
+  flex:1;min-width:96px;display:flex;align-items:center;gap:var(--sp-2);
+  padding:0 var(--sp-2);cursor:pointer;
+}
+.desen-marime input[type="range"]{
+  /* pista e subțire, dar zona apăsabilă trebuie să fie cât un deget */
+  flex:1;min-width:60px;height:34px;margin:0;accent-color:var(--primary);cursor:pointer;
 }
 .desen-bulina{
   display:block;border-radius:var(--r-full);background:var(--fg);flex:none;
   border:1px solid color-mix(in srgb,var(--fg) 30%,transparent);
   transition:width var(--t) var(--ease),height var(--t) var(--ease),background var(--t) var(--ease);
 }
-/* Glisorul e orizontal și îl întoarcem: un range vertical nativ nu se poartă
-   la fel peste tot, iar rotirea merge sigur și cu degetul. Pista are înălțime
-   fixă fiindcă elementul rotit ocupă tot cutia lui nerotită. */
-.desen-marime__pista{position:relative;display:block;width:38px;height:210px;flex:none}
-.desen-marime__pista input[type="range"]{
-  position:absolute;left:50%;top:50%;width:210px;margin:0;
-  transform:translate(-50%,-50%) rotate(-90deg);
-  accent-color:var(--primary);
-}
 
-/* ---- paleta de jos ---- */
-.desen-bara-jos{
-  flex:none;display:flex;align-items:center;gap:var(--sp-3);
-  padding:var(--sp-3) var(--sp-4);
-  padding-bottom:calc(var(--sp-3) + env(safe-area-inset-bottom));
-  border-top:1px solid var(--border);background:var(--surface);
+.desen-actiuni{display:flex;align-items:center;gap:4px}
+.desen-actiuni .icon-btn:disabled{opacity:.35;pointer-events:none}
+
+/* ---- paleta de culori ---- */
+/* Culorile se rup pe două rânduri pe ecran îngust. O bandă care se derulează
+   ar ascunde jumătate din paletă, iar culorile trebuie să se vadă toate. */
+.desen-culori{
+  flex-basis:100%;display:flex;align-items:center;flex-wrap:wrap;gap:9px;
+  padding:3px 1px;
 }
-.desen-bara-jos .desen-culori{
-  flex:1;flex-wrap:nowrap;overflow-x:auto;gap:9px;padding:3px 1px;
-  scrollbar-width:none;
+.desen-culoare{
+  width:30px;height:30px;flex:none;border-radius:var(--r-full);
+  /* pe fundal întunecat, negrul de desen ar fi invizibil fără conturul ăsta */
+  border:1px solid color-mix(in srgb,var(--fg) 35%,transparent);
+  transition:transform var(--t) var(--ease-out-back),box-shadow var(--t) var(--ease);
 }
-.desen-bara-jos .desen-culori::-webkit-scrollbar{display:none}
-.desen-bara-jos .desen-culoare{width:30px;height:30px;flex:none}
+.desen-culoare:hover{transform:scale(1.12)}
+.desen-culoare.is-active{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--fg-soft);transform:scale(1.12)}
 .desen-oricare{
-  flex:none;width:34px;height:34px;border-radius:var(--r-full);overflow:hidden;
+  flex:none;width:32px;height:32px;border-radius:var(--r-full);overflow:hidden;
   border:1px solid var(--border-strong,var(--border));display:grid;place-items:center;
   cursor:pointer;position:relative;
   background:conic-gradient(#DC2626,#CA8A04,#059669,#0EA5E9,#2563EB,#7C3AED,#DB2777,#DC2626);
@@ -1128,43 +1150,14 @@ body{-webkit-tap-highlight-color:transparent}
   opacity:0;cursor:pointer;padding:0;border:0;
 }
 
-.desen-panza{
-  /* min-width:0 nu e de prisos: fără el, nivelul ăsta refuză să coboare sub
-     mărimea proprie a pânzei (adică sub numărul ei de pixeli) și împinge
-     desenul în afara ecranului pe telefon. Regula e valabilă la fiecare nivel
-     dintre marginea ecranului și pânză, nu doar la pânză. */
-  flex:1;position:relative;min-height:0;min-width:0;
-  padding:var(--sp-3);
-  padding-bottom:calc(var(--sp-3) + env(safe-area-inset-bottom));
-  display:flex;
-}
-#desenCanvas{
-  flex:1;background:#fff;border:1px solid var(--border);border-radius:var(--r-md);
-  box-shadow:var(--sh-1);cursor:crosshair;
-  touch-action:none;                    /* altfel telefonul derulează în loc să deseneze */
-  /* Mărimea pânzei trebuie să vină numai din spațiul rămas liber. Fără liniile
-     de mai jos, un element flexibil refuză să coboare sub mărimea lui proprie,
-     iar mărimea proprie a unei pânze e chiar numărul ei de pixeli. Pe ecranele
-     dense (telefon) pixelii sunt de două-trei ori mai mulți decât locul de pe
-     ecran, așa că pânza s-ar umfla singură la fiecare măsurătoare până ar ieși
-     din ecran, ducând cu ea și butoanele de salvare. */
-  min-width:0;min-height:0;
-}
-.desen-sfat{
-  position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;
-  color:#94A3B8;font-size:14px;
-}
-
 @media (max-width:860px){
-  .desen__top{gap:var(--sp-2);padding-left:var(--sp-2);padding-right:var(--sp-2)}
-  .desen-unelte{gap:6px}
+  .desen-bara{gap:6px;padding:6px}
   .desen-pensula{width:36px;height:36px}
-  .desen-marime{width:46px;gap:var(--sp-2)}
-  .desen-marime__pista{width:32px;height:170px}
-  .desen-marime__pista input[type="range"]{width:170px}
-  .desen-bara-jos{padding:var(--sp-2) var(--sp-3);gap:var(--sp-2)}
-  .desen-bara-jos .desen-culoare{width:32px;height:32px}
-  .desen-panza{padding:var(--sp-2)}
+  .desen-marime{min-width:80px;padding:0 4px}
+  .desen-culoare{width:32px;height:32px}
+  /* pe telefon „Gata” rămâne doar bifa: altfel uneltele se rup pe încă un rând
+     și mănâncă din locul desenului */
+  .desen-bara .btn__text{display:none}
 }
 
 /* ---- repetiție ---- */

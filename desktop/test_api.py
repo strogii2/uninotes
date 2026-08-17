@@ -5,8 +5,13 @@ fără să deschidă dialoguri sau ferestre: înlocuim dialogul și os.startfile
 
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
+
+# Consola Windows nu scrie diacritice implicit, iar rezultatul testului
+# s-ar pierde tocmai cand ai nevoie de el.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 import main as app
 
