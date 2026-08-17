@@ -318,6 +318,13 @@ h1,h2,h3,p{margin:0}
 
 .list-sub{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3) var(--sp-3)}
 .list-title{font-size:15px;font-weight:700;letter-spacing:-.02em;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* titlul ecranului „Azi”: ziua, apoi ceasul, mai discret și cu cifre de
+   aceeași lățime — altfel rândul ar tresări la fiecare secundă */
+.azi-titlu__zi{margin-right:8px}
+.azi-titlu__ceas{
+  font-weight:600;color:var(--fg-muted);font-variant-numeric:tabular-nums;
+  font-size:13.5px;
+}
 .sort select{
   border:0;background:transparent;color:var(--fg-muted);font-size:12.5px;font-weight:600;
   padding:4px 2px;border-radius:6px;cursor:pointer;
@@ -1223,6 +1230,21 @@ button.azi-rand:hover{background:var(--muted)}
 .azi-rand.e-restant .azi-rand__dreapta{color:var(--danger);font-weight:700}
 .azi-rand.e-azi .azi-rand__dreapta{color:var(--primary);font-weight:700}
 .nav__item--azi .ic{color:var(--primary)}
+
+/* codul de legătură: o singură lipire pe al doilea dispozitiv */
+.cod-legatura{
+  display:flex;flex-direction:column;gap:var(--sp-3);
+  padding:var(--sp-3) var(--sp-4);border-radius:var(--r-md);
+  border:1px solid color-mix(in srgb,var(--primary) 32%,var(--border));
+  background:color-mix(in srgb,var(--primary) 7%,transparent);
+}
+.cod-legatura__cap{font-size:13.5px;line-height:1.55;margin:0;color:var(--fg)}
+.cod-legatura__actiuni{display:flex;flex-direction:column;gap:var(--sp-2)}
+.cod-legatura input{
+  width:100%;padding:10px var(--sp-3);min-height:42px;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);
+  font-size:13px;font-family:var(--font-mono,monospace);
+}
 
 /* pași numerotați: întâi ce ai de făcut, explicațiile abia dedesubt */
 .pasi{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--sp-4)}
