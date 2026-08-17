@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 24;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 25;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -1575,6 +1575,172 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   function activeNote() { return db.notes.find(n => n.id === ui.activeId) || null; }
 
   /* ==========================================================
+     ECRANUL „AZI”
+     Orarul, termenele, ce e nou în Moodle și notițele de ieri stăteau fiecare
+     în colțul lui, iar ca să știi ce te așteaptă azi trebuia să le deschizi pe
+     rând. Aici sunt la un loc, în ordinea în care contează.
+     ========================================================== */
+  function grupEcranAzi(titlu, actiune, gol) {
+    const box = document.createElement('section');
+    box.className = 'azi-grup';
+    const cap = document.createElement('div');
+    cap.className = 'azi-cap';
+    const h = document.createElement('h2');
+    h.textContent = titlu;
+    cap.appendChild(h);
+    if (actiune) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'azi-cap__link';
+      b.textContent = actiune.eticheta;
+      b.addEventListener('click', actiune.fn);
+      cap.appendChild(b);
+    }
+    box.appendChild(cap);
+    if (gol) {
+      const p = document.createElement('p');
+      p.className = 'azi-gol';
+      p.textContent = gol;
+      box.appendChild(p);
+    }
+    return box;
+  }
+
+  function randEcranAzi(titlu, jos, dreapta, fn, clasa) {
+    const r = document.createElement(fn ? 'button' : 'div');
+    r.className = 'azi-rand' + (clasa ? ' ' + clasa : '');
+    if (fn) { r.type = 'button'; r.addEventListener('click', fn); }
+    const corp = document.createElement('span');
+    corp.className = 'azi-rand__corp';
+    const t = document.createElement('span');
+    t.className = 'azi-rand__titlu';
+    t.textContent = titlu;
+    corp.appendChild(t);
+    if (jos) {
+      const j = document.createElement('span');
+      j.className = 'azi-rand__jos';
+      j.textContent = jos;
+      corp.appendChild(j);
+    }
+    r.appendChild(corp);
+    if (dreapta) {
+      const d = document.createElement('span');
+      d.className = 'azi-rand__dreapta';
+      d.textContent = dreapta;
+      r.appendChild(d);
+    }
+    return r;
+  }
+
+  /** Ce e nou în Moodle: anunțuri, de la cel mai proaspăt. */
+  function noutatiMoodle(cate) {
+    const out = [];
+    (moodle().cursuri || []).forEach(c => {
+      (c.anunturi || []).forEach(a => out.push({ curs: c.nume, anunt: a }));
+    });
+    return out.sort((a, b) => String(b.anunt.data).localeCompare(String(a.anunt.data)))
+              .slice(0, cate || 3);
+  }
+
+  function randeazaEcranulAzi() {
+    const gazda = $('#aziPane');
+    if (!gazda) return;
+    gazda.innerHTML = '';
+
+    /* ---- orele de azi ---- */
+    const ore = oreZiActive(ziAzi());
+    const acum = minAcum();
+    const grupOre = grupEcranAzi('Orarul de azi',
+      { eticheta: 'Vezi orarul', fn: deschideOrar },
+      ore.length ? '' : 'Astăzi n-ai nimic în orar.');
+    ore.slice(0, 6).forEach(o => {
+      const inCurs = inMinute(o.start) <= acum && acum < inMinute(o.end);
+      const trecut = inMinute(o.end) <= acum;
+      grupOre.appendChild(randEcranAzi(
+        o.materie,
+        [o.sala, o.tip].filter(Boolean).join(' · '),
+        o.start + '–' + o.end,
+        deschideOrar,
+        inCurs ? 'e-acum' : (trecut ? 'e-trecut' : '')));
+    });
+    gazda.appendChild(grupOre);
+
+    /* ---- ce ai de făcut ---- */
+    const deFacut = termeneDeFacut().filter(t => zileRamase(t.data) <= 7);
+    const grupT = grupEcranAzi('De făcut',
+      { eticheta: 'Vezi termenele', fn: deschideTermene },
+      deFacut.length ? '' : 'Nimic în următoarea săptămână. Respiră.');
+    deFacut.slice(0, 6).forEach(t => {
+      const z = zileRamase(t.data);
+      const s = t.subjectId ? db.subjects.find(x => x.id === t.subjectId) : null;
+      const rand = randEcranAzi(t.titlu, s ? s.name : (t.nota || ''), textZile(z),
+        deschideTermene, z < 0 ? 'e-restant' : (z === 0 ? 'e-azi' : ''));
+      if (s) rand.style.borderLeftColor = s.color;
+      grupT.appendChild(rand);
+    });
+    gazda.appendChild(grupT);
+
+    /* ---- ce e nou în Moodle ---- */
+    const noutati = noutatiMoodle(3);
+    if ((moodle().cursuri || []).length) {
+      const grupM = grupEcranAzi('Din Moodle',
+        { eticheta: 'Vezi materiile', fn: deschideMoodle },
+        noutati.length ? '' : 'Niciun anunț nou.');
+      noutati.forEach(n => {
+        grupM.appendChild(randEcranAzi(n.anunt.titlu,
+          [n.curs, n.anunt.autor].filter(Boolean).join(' · '),
+          n.anunt.data ? n.anunt.data.split('-').reverse().join('.') : '',
+          deschideMoodle));
+      });
+      gazda.appendChild(grupM);
+    }
+
+    /* ---- unde rămăsesei ---- */
+    const recente = db.notes.filter(n => !n.archived)
+      .slice().sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3);
+    const grupN = grupEcranAzi('Unde rămăsesei',
+      { eticheta: 'Toate notițele', fn: () => setFilter('all') },
+      recente.length ? '' : 'Încă nicio notiță.');
+    recente.forEach(n => {
+      const s = subjectOf(n);
+      grupN.appendChild(randEcranAzi(n.title || 'Fără titlu',
+        s ? s.name : '', fmtDay.format(new Date(n.updatedAt)),
+        () => { openNote(n.id); showPane('editor'); }));
+    });
+    gazda.appendChild(grupN);
+  }
+
+  /** Insigna de lângă „Azi”: câte lucruri te privesc chiar azi. */
+  function actualizeazaInsignaAzi() {
+    const el = $('#cAzi');
+    if (!el) return;
+    const ore = oreZiActive(ziAzi()).filter(o => inMinute(o.end) > minAcum()).length;
+    const term = termeneDeFacut().filter(t => zileRamase(t.data) <= 1).length;
+    const total = ore + term;
+    el.textContent = total ? String(total) : '—';
+  }
+
+  function arataAzi() {
+    ui.ecran = 'azi';
+    $$('.nav__item').forEach(b => b.classList.remove('is-active'));
+    $('#aziBtn').classList.add('is-active');
+    $('#listTitle').textContent = salutAzi();
+    $('#aziPane').hidden = false;
+    $('#notesList').hidden = true;
+    const sortare = $('.sort'); if (sortare) sortare.hidden = true;
+    randeazaEcranulAzi();
+    showPane('list');
+    closeNav();
+  }
+
+  function salutAzi() {
+    const o = new Date().getHours();
+    const parte = o < 5 ? 'Noapte bună' : (o < 11 ? 'Bună dimineața'
+                : (o < 18 ? 'Bună ziua' : 'Bună seara'));
+    return parte + ', ' + ZILE[ziAzi()].toLowerCase();
+  }
+
+  /* ==========================================================
      RANDARE — SIDEBAR
      ========================================================== */
   function renderSidebar() {
@@ -1584,8 +1750,10 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     $('#cArch').textContent = db.notes.filter(n => n.archived).length;
 
     $$('.nav__item[data-filter]').forEach(b =>
-      b.classList.toggle('is-active', ui.filter.type === b.dataset.filter));
+      b.classList.toggle('is-active', ui.ecran !== 'azi' && ui.filter.type === b.dataset.filter));
     actualizeazaInsigna();
+    actualizeazaInsignaAzi();
+    if (ui.ecran === 'azi') randeazaEcranulAzi();
     actualizeazaInsignaTermene();
     actualizeazaInsignaRepetitie();
     actualizeazaInsignaMoodle();
@@ -2225,7 +2393,17 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     });
   }
 
+  /** Orice filtru te scoate din ecranul „Azi” înapoi în lista de notițe. */
+  function arataNotitele() {
+    ui.ecran = 'notite';
+    const p = $('#aziPane'); if (p) p.hidden = true;
+    const l = $('#notesList'); if (l) l.hidden = false;
+    const s = $('.sort'); if (s) s.hidden = false;
+    const b = $('#aziBtn'); if (b) b.classList.remove('is-active');
+  }
+
   function setFilter(type, subjectIds) {
+    arataNotitele();
     ui.filter.type = type;
     ui.filter.subjectIds = subjectIds ? subjectIds.slice() : [];
     renderSidebar();
@@ -2241,6 +2419,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
    * apuca să alegi a doua materie.
    */
   function comutaMaterie(id) {
+    arataNotitele();
     const alese = ui.filter.subjectIds;
     const i = alese.indexOf(id);
     if (i >= 0) alese.splice(i, 1);
@@ -5792,6 +5971,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     pe('#repetitieDlg', 'close', () => { sesiune = null; renderSidebar(); });
 
     /* ---------- termene ---------- */
+    pe('#aziBtn', 'click', arataAzi);
     pe('#termeneBtn', 'click', deschideTermene);
     pe('#termeneCalendar', 'click', puneInCalendar);
     pe('#termenAminteste', 'change', randeazaAjutorulAmintirii);
@@ -6359,6 +6539,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     if (first && window.innerWidth > 860) { ui.activeId = first.id; }
     renderEditor();
     showPane(ui.activeId && window.innerWidth > 860 ? 'editor' : 'list');
+    arataAzi();                           // ecranul de pornire: ce te privește azi
 
     $('#versiune').textContent = 'versiunea ' + VERSIUNE;
     starSync();

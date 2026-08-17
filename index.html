@@ -117,7 +117,12 @@ window.addEventListener('unhandledrejection', function (e) {
     </button>
 
     <nav class="nav" aria-label="Filtre">
-      <button class="nav__item is-active" data-filter="all">
+      <button class="nav__item nav__item--azi is-active" id="aziBtn">
+        <svg class="ic"><use href="#i-sparkle"></use></svg>
+        <span>Azi</span>
+        <em class="count" id="cAzi">—</em>
+      </button>
+      <button class="nav__item" data-filter="all">
         <svg class="ic"><use href="#i-layers"></use></svg>
         <span>Toate notițele</span>
         <em class="count" id="cAll">0</em>
@@ -225,6 +230,9 @@ window.addEventListener('unhandledrejection', function (e) {
         </select>
       </label>
     </div>
+
+    <!-- Ecranul de pornire: ce te privește azi, într-un singur loc. -->
+    <div class="azi" id="aziPane" hidden></div>
 
     <div class="notes" id="notesList" role="list"></div>
   </section>
