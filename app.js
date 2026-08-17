@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 28;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 29;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -4031,7 +4031,15 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   const AMINTIRE_IMPLICITA = [1];
 
   const areNotificari = () => typeof Notification !== 'undefined';
-  const notificariPornite = () => areNotificari() && Notification.permission === 'granted';
+
+  /**
+   * În fereastra de Windows nu trecem prin browser: motorul lui refuză din
+   * start notificările paginii — nu întreabă, răspunde „nu”. Acolo cerem
+   * notificarea chiar sistemului, prin punte, deci n-avem ce permisiune cere.
+   */
+  const anuntPrinSistem = () => !!(api() && api().notifica);
+  const notificariPornite = () =>
+    anuntPrinSistem() || (areNotificari() && Notification.permission === 'granted');
 
   /** Cu câte zile înainte să sune — pot fi mai multe, de la cea mai devreme. */
   function zileleAmintirii(t) {
@@ -4063,6 +4071,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   }
 
   async function cerePermisiuneAnunturi() {
+    if (anuntPrinSistem()) return true;      // sistemul le dă oricum
     if (!areNotificari()) {
       toast('Aplicația asta nu poate trimite notificări aici. Pune termenele în ' +
             'calendarul telefonului — butonul cu calendarul, sus.', 'err', null, 8000);
@@ -4120,7 +4129,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         requireInteraction: z <= 0
       };
       try {
-        if (reg && reg.showNotification) await reg.showNotification(t.titlu, optiuni);
+        if (anuntPrinSistem()) await api().notifica(t.titlu, corp);
+        else if (reg && reg.showNotification) await reg.showNotification(t.titlu, optiuni);
         else new Notification(t.titlu, optiuni);
         if (!Array.isArray(t.anuntate)) t.anuntate = [];
         t.anuntate.push(pereche.zi);
@@ -4195,7 +4205,17 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       if (pornit && i < 0) zile.push(zi);
       if (!pornit && i >= 0) zile.splice(i, 1);
       t.aminteste = zile.sort((a, b) => b - a);
-      t.anuntate = [];                    // s-a schimbat înțelegerea: o luăm de la capăt
+
+      // Ce s-a anunțat rămâne anunțat, dar numai pentru amintirile rămase.
+      // Iar amintirea proaspăt pusă, dacă termenul e deja în fereastra ei, o
+      // socotim spusă: altfel o singură apăsare aici ar trimite dintr-odată
+      // câte o notificare pentru fiecare termen apropiat — un val, degeaba,
+      // fiindcă tocmai te uitai la lista lor când ai apăsat.
+      const spuse = (Array.isArray(t.anuntate) ? t.anuntate : [])
+        .filter(z => t.aminteste.indexOf(z) >= 0);
+      const z = zileRamase(t.data);
+      if (pornit && z !== null && z <= zi && spuse.indexOf(zi) < 0) spuse.push(zi);
+      t.anuntate = spuse;
     });
     salveazaTermene();
     randeazaToateAmintirile();
@@ -4329,8 +4349,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     }
     const cand = amintiriAlese.slice().sort((a, b) => b - a).map(numeAmintire).join(', ');
     el.textContent = notificariPornite()
-      ? 'Te anunț ' + cand + ', când deschizi aplicația. Ca telefonul să sune și cu ' +
-        'aplicația închisă, pune termenele în calendarul lui — butonul cu calendarul, ' +
+      ? 'Te anunț ' + cand + ', când deschizi aplicația. Ca să te anunțe și cu ' +
+        'aplicația închisă, pune termenele în calendar — butonul cu calendarul, ' +
         'sus în Termene.'
       : 'Te anunț ' + cand + '. Va trebui să-mi dai voie să trimit notificări; ' +
         'te întreb la salvare.';
