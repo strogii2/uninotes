@@ -31,6 +31,8 @@ import webview
 import main as app
 
 CHEIE_BUNA = "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"
+UTILIZATOR = "carp.dragos"
+PAROLA = "ParolaMeaSecreta!2026"
 
 VIITOR = int((datetime.now() + timedelta(days=12)).timestamp())
 TRECUT = int((datetime.now() - timedelta(days=40)).timestamp())
@@ -127,19 +129,32 @@ def raspunde(functie, camp):
 
 class Server(BaseHTTPRequestHandler):
     def do_POST(self):                               # noqa: N802
-        if self.path.split("?")[0] != "/webservice/rest/server.php":
-            self.send_error(404)
-            return
+        cale = self.path.split("?")[0]
         lungime = int(self.headers.get("Content-Length") or 0)
         camp = {k: v[0] for k, v in
                 urllib.parse.parse_qs(self.rfile.read(lungime).decode("utf-8")).items()}
+
+        if cale == "/login/token.php":
+            if camp.get("username") == UTILIZATOR and camp.get("password") == PAROLA:
+                corp = {"token": CHEIE_BUNA, "privatetoken": None}
+            else:
+                corp = {"error": "Invalid login, please try again",
+                        "errorcode": "invalidlogin", "stacktrace": None}
+            self.trimite(corp)
+            return
+
+        if cale != "/webservice/rest/server.php":
+            self.send_error(404)
+            return
 
         if camp.get("wstoken") != CHEIE_BUNA:
             corp = {"exception": "moodle_exception", "errorcode": "invalidtoken",
                     "message": "Invalid token - token not found"}
         else:
             corp = raspunde(camp.get("wsfunction", ""), camp)
+        self.trimite(corp)
 
+    def trimite(self, corp):
         brut = json.dumps(corp).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -215,14 +230,25 @@ def asteapta_aplicatia(window, secunde=40):
     return False
 
 
+def intra_cu_parola(window, site, utilizator, parola, asteapta=9):
+    window.evaluate_js("""
+        document.querySelector('#moodleSite').value = %s;
+        document.querySelector('#moodleUtilizator').value = %s;
+        document.querySelector('#moodleParola').value = %s;
+        document.querySelector('#moodleConecteaza').click();
+        'ok'
+    """ % (json.dumps(site), json.dumps(utilizator), json.dumps(parola)))
+    time.sleep(asteapta)
+
+
 def conecteaza(window, site, cheie):
     window.evaluate_js("""
         document.querySelector('#moodleSite').value = %s;
         document.querySelector('#moodleJeton').value = %s;
-        document.querySelector('#moodleConecteaza').click();
+        document.querySelector('#moodleConecteazaCheie').click();
         'ok'
     """ % (json.dumps(site), json.dumps(cheie)))
-    time.sleep(2.5)
+    time.sleep(9)
 
 
 def date_de_pe_disc():
@@ -242,17 +268,30 @@ def probe(window):
         time.sleep(1.2)
         out["nelegat_la_inceput"] = citeste(window.evaluate_js(CONT))
 
-        # ---- cheie greșită: mesaj pe înțeles, fără să se lege ----
-        conecteaza(window, site, "cheiegresita")
-        out["cheie_gresita"] = citeste(window.evaluate_js(CONT))
+        # ---- parolă greșită: mesaj pe înțeles, fără să se lege ----
+        intra_cu_parola(window, site, UTILIZATOR, "parola-gresita", 4)
+        out["parola_gresita"] = citeste(window.evaluate_js(CONT))
+        out["campul_parolei_golit_la_esec"] = window.evaluate_js(
+            "document.querySelector('#moodleParola').value === ''")
 
-        # ---- cheia bună ----
-        conecteaza(window, site, CHEIE_BUNA)
+        # ---- parola bună: se leagă ȘI aduce informația, dintr-o singură apăsare ----
+        intra_cu_parola(window, site, UTILIZATOR, PAROLA)
         out["dupa_conectare"] = citeste(window.evaluate_js(CONT))
+        out["campul_parolei_golit"] = window.evaluate_js(
+            "document.querySelector('#moodleParola').value === ''")
+        out["a_adus_singur"] = window.evaluate_js(
+            "document.querySelectorAll('.mcurs').length")
 
-        # ---- aducerea informației ----
-        window.evaluate_js("document.querySelector('#moodleAduTot').click(); 'ok'")
-        time.sleep(6)
+        # parola n-are voie sa ramana nicaieri
+        out["parola_nu_e_in_browser"] = window.evaluate_js("""
+            (function () {
+              for (var i = 0; i < localStorage.length; i++) {
+                if ((localStorage.getItem(localStorage.key(i)) || '').indexOf(%s) >= 0) return false;
+              }
+              return true;
+            })()
+        """ % json.dumps(PAROLA))
+
         out["dupa_aducere"] = citeste(window.evaluate_js(CONT))
         out["pe_materii"] = citeste(window.evaluate_js(MATERII))
         # la a doua materie facultatea refuză notele: restul trebuie să vină oricum
@@ -269,9 +308,12 @@ def probe(window):
         out["cursuri_salvate"] = len((date.get("moodle") or {}).get("cursuri") or [])
         out["numele_meu_salvat"] = (date.get("moodle") or {}).get("nume", "")
 
-        # cheia NU are voie sa ajunga in fisierul care pleaca in backup si sync
+        # nici cheia, nici parola n-au ce cauta in fisierul care pleaca
+        # in backup si in sincronizare
         brut = app.DATA_FILE.read_text(encoding="utf-8")
         out["cheia_nu_e_in_notite"] = CHEIE_BUNA not in brut
+        out["parola_nu_e_in_notite"] = PAROLA not in brut
+        out["utilizatorul_tinut_minte"] = (date.get("moodle") or {}).get("utilizator") == UTILIZATOR
         out["cheia_e_in_browser"] = window.evaluate_js(
             "localStorage.getItem('uninotes.moodle-jeton') === %s" % json.dumps(CHEIE_BUNA))
 
@@ -306,6 +348,12 @@ def probe(window):
         out["dupa_deconectare"] = citeste(window.evaluate_js(
             "JSON.stringify({cheie: localStorage.getItem('uninotes.moodle-jeton') || '', "
             "carduri: document.querySelectorAll('.mcurs').length})"))
+
+        # ---- varianta cu cheia pusă de mână trebuie să meargă mai departe ----
+        conecteaza(window, site, CHEIE_BUNA)
+        out["cu_cheia_de_mana"] = citeste(window.evaluate_js(CONT))
+        conecteaza(window, site, "cheiegresita")
+        out["cheie_gresita"] = citeste(window.evaluate_js(CONT))
 
         out["eroare_final"] = window.evaluate_js("window.__eroare || ''")
     except Exception as exc:                                  # noqa: BLE001

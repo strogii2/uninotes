@@ -1182,6 +1182,8 @@ body{-webkit-tap-highlight-color:transparent}
   border:1px solid color-mix(in srgb,var(--primary) 32%,transparent);color:var(--primary);
 }
 .moodle__sectiune{display:flex;flex-direction:column;gap:var(--sp-3)}
+.moodle__doua{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3)}
+@media (max-width:600px){ .moodle__doua{grid-template-columns:1fr} }
 .moodle__pliant{
   border:1px solid var(--border);border-radius:var(--r-md);padding:var(--sp-3) var(--sp-4);
   background:var(--surface);

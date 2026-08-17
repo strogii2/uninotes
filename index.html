@@ -513,9 +513,10 @@ window.addEventListener('unhandledrejection', function (e) {
         <section class="moodle__sectiune">
           <h3 class="moodle__cap">Contul tău Moodle</h3>
           <p class="moodle__ajutor">
-            Nu-ți cere nimeni parola. În Moodle: <b>Preferințe</b> → <b>Chei de securitate</b>
-            și copiază cheia de la <b>Moodle mobile web service</b>. Cheia rămâne pe
-            calculatorul tău — nu intră în backup și nu se trimite nicăieri, în afară de Moodle.
+            Te conectezi ca la Moodle, cu utilizatorul și parola ta. <b>Parola nu se
+            salvează nicăieri</b>: pleacă o singură dată către serverul facultății,
+            care întoarce o cheie, și numai cheia rămâne — pe calculatorul ăsta,
+            în afara notițelor, deci nu intră în backup și nu pleacă prin sincronizare.
           </p>
 
           <label class="field">
@@ -523,24 +524,51 @@ window.addEventListener('unhandledrejection', function (e) {
             <input type="url" id="moodleSite" spellcheck="false"
                    placeholder="https://moodle.facultatea.ro">
           </label>
-          <label class="field">
-            <span>Cheia (jetonul) din Moodle</span>
-            <input type="password" id="moodleJeton" spellcheck="false" autocomplete="off"
-                   placeholder="ex. 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d">
-          </label>
+          <div class="moodle__doua">
+            <label class="field">
+              <span>Utilizator</span>
+              <input type="text" id="moodleUtilizator" spellcheck="false"
+                     autocomplete="username" autocapitalize="off" placeholder="ex. carp.dragos">
+            </label>
+            <label class="field">
+              <span>Parola de Moodle</span>
+              <input type="password" id="moodleParola" autocomplete="current-password">
+            </label>
+          </div>
 
           <div class="moodle__actiuni">
             <button class="btn btn--primary" id="moodleConecteaza">
               <svg class="ic"><use href="#i-key"></use></svg>
-              <span>Conectează contul</span>
+              <span>Conectează-te</span>
             </button>
             <button class="btn" id="moodleAduTot" hidden>
               <svg class="ic"><use href="#i-download"></use></svg>
-              <span>Adu informația</span>
+              <span>Adu informația acum</span>
             </button>
             <button class="ghost-btn" id="moodleDeconecteaza" hidden>Deconectează</button>
           </div>
           <p class="moodle__stare" id="moodleContStare"></p>
+
+          <details class="moodle__pliant" id="moodleCheiePliant">
+            <summary>Nu merge cu parola? Pune cheia de-a dreptul</summary>
+            <p class="moodle__ajutor">
+              Unele facultăți te lasă să intri doar prin pagina lor de autentificare, și
+              atunci parola nu ajunge la Moodle pe drumul ăsta. În Moodle:
+              <b>Preferințe</b> → <b>Chei de securitate</b>, și copiază cheia de la
+              <b>Moodle mobile web service</b>.
+            </p>
+            <label class="field">
+              <span>Cheia din Moodle</span>
+              <input type="password" id="moodleJeton" spellcheck="false" autocomplete="off"
+                     placeholder="ex. 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d">
+            </label>
+            <div class="moodle__actiuni">
+              <button class="btn" id="moodleConecteazaCheie">
+                <svg class="ic"><use href="#i-key"></use></svg>
+                <span>Conectează cu cheia</span>
+              </button>
+            </div>
+          </details>
         </section>
 
         <!-- ---- ce a venit, pe materii ---- -->

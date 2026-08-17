@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 17;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 18;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -208,6 +208,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       site: text(parsed.moodle.site, 200),        // adresa Moodle
       siteNume: text(parsed.moodle.siteNume, 80),
       nume: text(parsed.moodle.nume, 80),
+      utilizator: text(parsed.moodle.utilizator, 60),
       userid: +parsed.moodle.userid || 0,
       ultima: text(parsed.moodle.ultima, 40),
       ultimaCont: text(parsed.moodle.ultimaCont, 40),
@@ -3739,6 +3740,42 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     return d;
   }
 
+  /* Mesaje pentru ce poate răspunde Moodle când ceri o cheie cu parola. */
+  const ERORI_LOGIN = [
+    [/invalidlogin|invalid ?login/i,
+     'Utilizatorul sau parola nu sunt bune. Sunt aceleași cu care intri în Moodle.'],
+    [/enablewsdescription|webservicesnotenabled/i,
+     'Facultatea n-a pornit serviciile web în Moodle. Nu se poate lega contul.'],
+    [/enablemobilewebservice|mobile/i,
+     'Facultatea n-a pornit serviciul pentru aplicația de mobil. Încearcă varianta cu cheia.'],
+    [/sitemaintenance/i, 'Moodle-ul e în mentenanță acum. Încearcă mai târziu.'],
+    [/usersuspended|userlocked/i, 'Contul e suspendat sau blocat în Moodle.'],
+    [/policy|agreement/i,
+     'Moodle așteaptă să accepți o politică. Intră o dată pe site, apoi revino aici.']
+  ];
+
+  function mesajLogin(r) {
+    const text = (r && (r.cod || '') + ' ' + (r.eroare || '')) || '';
+    const g = ERORI_LOGIN.find(p => p[0].test(text));
+    if (g) return g[1];
+    return (r && r.eroare) || 'Moodle n-a dat cheia.';
+  }
+
+  /**
+   * Schimbă utilizatorul și parola pe o cheie, o dată. Parola nu intrăm în
+   * posesia ei mai mult decât atât: nu se salvează, nu se ține minte, iar
+   * câmpul se golește imediat ce s-a terminat.
+   */
+  async function conecteazaCuParola(site, utilizator, parola) {
+    if (!api() || !api().moodle_login) {
+      throw new Error('Conectarea cu parola merge doar în aplicația de pe calculator. ' +
+                      'În browser, folosește cheia din Moodle.');
+    }
+    const r = await api().moodle_login(site, utilizator, parola);
+    if (!r || !r.ok) throw new Error(mesajLogin(r));
+    return r.token;
+  }
+
   /** Se prezintă la Moodle și află ce funcții are pornite facultatea. */
   async function conecteazaMoodle() {
     const info = await moodleApel('core_webservice_get_site_info');
@@ -4390,7 +4427,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     $('#moodleAduTot').hidden = !legat;
     $('#moodleDeconecteaza').hidden = !legat;
     if (!legat) {
-      stareCont('Nelegat. Pune adresa Moodle și cheia de la Chei de securitate.');
+      stareCont('Nelegat. Pune adresa Moodle, utilizatorul și parola ta.');
       return;
     }
     const cand = moodle().ultimaCont ? new Date(moodle().ultimaCont) : null;
@@ -4399,12 +4436,62 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       (cand && !isNaN(cand.getTime()) ? ' · adus pe ' + fmtFull.format(cand) : ''));
   }
 
+  /** Aduce tot și arată rezultatul; întoarce ce s-a schimbat. */
+  async function aduSiArata(tacut) {
+    const cursuri = await aduTotDinMoodle(t => { if (!tacut) stareCont(t); });
+    const r = leagaCursurile(cursuri);
+    randeazaMateriileMoodle();
+    actualizeazaContMoodle();
+    const parti = [cursuri.length + (cursuri.length === 1 ? ' materie' : ' materii')];
+    if (r.materii) parti.push(r.materii + (r.materii === 1 ? ' nouă' : ' noi'));
+    if (r.teme) parti.push(r.teme + (r.teme === 1 ? ' temă de predat' : ' teme de predat'));
+    if (r.innoite) parti.push(r.innoite + (r.innoite === 1 ? ' termen mutat' : ' termene mutate'));
+    if (!tacut) toast('Adus din Moodle: ' + parti.join(', '), 'ok');
+    return r;
+  }
+
+  /** După ce contul e legat, informația vine imediat — n-are rost s-o mai ceri. */
+  async function legaSiAdu(site, jeton) {
+    moodle().site = String(site).slice(0, 200);
+    localSet(CHEIE_MOODLE, jeton);
+    await conecteazaMoodle();
+    actualizeazaContMoodle();
+    return await aduSiArata();
+  }
+
+  /**
+   * La pornire, dacă a trecut ceva timp, informația se împrospătează singură,
+   * în fundal. Fără mesaje: dacă Moodle nu răspunde acum, rămâne ce era și
+   * încercăm data viitoare.
+   */
+  const RASUFLARE_MOODLE = 6 * 3600 * 1000;
+  async function improspateazaMoodle() {
+    if (!api() || !api().moodle_api) return;      // în browser n-avem cum
+    if (!(moodle().site && localGet(CHEIE_MOODLE))) return;
+    const cand = moodle().ultimaCont ? Date.parse(moodle().ultimaCont) : 0;
+    if (cand && Date.now() - cand < RASUFLARE_MOODLE) return;
+    try {
+      const r = await aduSiArata(true);
+      if (r.teme || r.innoite) {
+        const parti = [];
+        if (r.teme) parti.push(r.teme + (r.teme === 1 ? ' temă nouă' : ' teme noi'));
+        if (r.innoite) parti.push(r.innoite + (r.innoite === 1 ? ' termen mutat' : ' termene mutate'));
+        toast('Din Moodle: ' + parti.join(', '), 'ok',
+              { label: 'Vezi termenele', fn: deschideTermene }, 8000);
+      }
+    } catch (e) {
+      console.info('[UniNotes] Moodle n-a răspuns la pornire:', e.message);
+    }
+  }
+
   function deschideMoodle() {
     planMoodle = null;
     $('#moodleRezultat').innerHTML = '';
     $('#moodleAplica').hidden = true;
     $('#moodleUrl').value = moodle().url || '';
     $('#moodleSite').value = moodle().site || '';
+    $('#moodleUtilizator').value = moodle().utilizator || '';
+    $('#moodleParola').value = '';              // parola nu se ține minte niciodată
     $('#moodleJeton').value = localGet(CHEIE_MOODLE);
     const cand = moodle().ultima ? new Date(moodle().ultima) : null;
     stareMoodle(cand && !isNaN(cand.getTime())
@@ -4932,36 +5019,50 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     /* ---------- Moodle: contul ---------- */
     pe('#moodleConecteaza', 'click', async () => {
       const site = ($('#moodleSite').value || '').trim().replace(/\/+$/, '');
-      const jeton = ($('#moodleJeton').value || '').trim();
-      if (!site || !jeton) { stareCont('Pune și adresa, și cheia.', true); return; }
-      moodle().site = site.slice(0, 200);
-      localSet(CHEIE_MOODLE, jeton);
-      stareCont('Mă conectez…');
+      const utilizator = ($('#moodleUtilizator').value || '').trim();
+      const campParola = $('#moodleParola');
+      if (!site || !utilizator || !campParola.value) {
+        stareCont('Pune adresa, utilizatorul și parola.', true);
+        return;
+      }
+      stareCont('Mă conectez la Moodle…');
       $('#moodleConecteaza').disabled = true;
       try {
-        await conecteazaMoodle();
-        actualizeazaContMoodle();
-        toast('Cont Moodle legat', 'ok');
+        const jeton = await conecteazaCuParola(site, utilizator, campParola.value);
+        campParola.value = '';                  // parola nu mai are ce căuta nicăieri
+        moodle().utilizator = utilizator.slice(0, 60);
+        await legaSiAdu(site, jeton);
       } catch (e) {
+        campParola.value = '';
         stareCont(e.message || 'Nu m-am putut conecta.', true);
         $('#moodleAduTot').hidden = true;
       } finally {
         $('#moodleConecteaza').disabled = false;
       }
     });
+    pe('#moodleParola', 'keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); $('#moodleConecteaza').click(); }
+    });
+
+    pe('#moodleConecteazaCheie', 'click', async () => {
+      const site = ($('#moodleSite').value || '').trim().replace(/\/+$/, '');
+      const jeton = ($('#moodleJeton').value || '').trim();
+      if (!site || !jeton) { stareCont('Pune și adresa, și cheia.', true); return; }
+      $('#moodleConecteazaCheie').disabled = true;
+      try {
+        await legaSiAdu(site, jeton);
+      } catch (e) {
+        stareCont(e.message || 'Nu m-am putut conecta.', true);
+        $('#moodleAduTot').hidden = true;
+      } finally {
+        $('#moodleConecteazaCheie').disabled = false;
+      }
+    });
 
     pe('#moodleAduTot', 'click', async () => {
       $('#moodleAduTot').disabled = true;
       try {
-        const cursuri = await aduTotDinMoodle(t => stareCont(t));
-        const r = leagaCursurile(cursuri);
-        randeazaMateriileMoodle();
-        actualizeazaContMoodle();
-        const parti = [cursuri.length + (cursuri.length === 1 ? ' materie' : ' materii')];
-        if (r.materii) parti.push(r.materii + (r.materii === 1 ? ' nouă' : ' noi'));
-        if (r.teme) parti.push(r.teme + (r.teme === 1 ? ' temă de predat' : ' teme de predat'));
-        if (r.innoite) parti.push(r.innoite + (r.innoite === 1 ? ' termen mutat' : ' termene mutate'));
-        toast('Adus din Moodle: ' + parti.join(', '), 'ok');
+        await aduSiArata();
       } catch (e) {
         stareCont(e.message || 'Nu am putut aduce informația.', true);
       } finally {
@@ -5642,6 +5743,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     sfatGesturi();
     anuntaOrarul();
     setTimeout(curataPozeOrfane, 4000);   // după ce pornirea s-a liniștit
+    setTimeout(improspateazaMoodle, 6000);
   }
 
   document.addEventListener('DOMContentLoaded', boot);

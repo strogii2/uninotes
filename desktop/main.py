@@ -275,6 +275,60 @@ class Api:
                               "chiar legătura de export din Moodle."}
         return {"ok": True, "text": text}
 
+    def moodle_login(self, site, utilizator, parola):
+        """
+        Cere Moodle-ului o cheie pentru contul tău, dând utilizatorul și parola
+        — exact drumul pe care merge și aplicația oficială Moodle.
+
+        Parola trece o singură dată, direct către serverul facultății, și nu se
+        păstrează nicăieri: nici pe disc, nici în mesajele de eroare de mai jos.
+        Înapoi vine o cheie, și numai ea se ține minte.
+        """
+        site = str(site or "").strip().rstrip("/")
+        if not site.lower().startswith(("http://", "https://")):
+            return {"ok": False, "eroare": "Adresa Moodle trebuie să înceapă cu https://"}
+
+        gazda = urllib.parse.urlparse(site).hostname or ""
+        local = gazda in ("localhost", "127.0.0.1", "::1")
+        if site.lower().startswith("http://") and not local:
+            # o parolă pe http s-ar citi pe drum de oricine
+            return {"ok": False,
+                    "eroare": "Adresa e http://, nu https://. Nu trimit parola pe o "
+                              "legătură necriptată."}
+        if not str(utilizator or "").strip() or not str(parola or ""):
+            return {"ok": False, "eroare": "Pune și utilizatorul, și parola."}
+
+        date = urllib.parse.urlencode({
+            "username": str(utilizator).strip(),
+            "password": str(parola),
+            "service": "moodle_mobile_app",
+        }).encode("utf-8")
+        cerere = urllib.request.Request(
+            site + "/login/token.php", data=date,
+            headers={"User-Agent": "UniNotes",
+                     "Content-Type": "application/x-www-form-urlencoded"})
+        try:
+            with urllib.request.urlopen(cerere, timeout=30) as r:
+                brut = r.read(MAX_RASPUNS + 1)
+        except urllib.error.HTTPError as e:
+            return {"ok": False, "eroare": "Serverul a răspuns cu eroarea %s." % e.code}
+        except Exception as e:                                    # noqa: BLE001
+            return {"ok": False, "eroare": "Nu am putut ajunge la Moodle: %s" % e}
+        finally:
+            date = None                                           # nu mai ținem parola în memorie
+
+        try:
+            raspuns = json.loads(brut.decode("utf-8", errors="replace"))
+        except Exception:                                         # noqa: BLE001
+            return {"ok": False,
+                    "eroare": "Adresa nu pare a fi un Moodle. Pune doar adresa de "
+                              "pornire, fără /my sau /login."}
+
+        if raspuns.get("token"):
+            return {"ok": True, "token": raspuns["token"]}
+        return {"ok": False, "cod": str(raspuns.get("errorcode") or ""),
+                "eroare": str(raspuns.get("error") or "Moodle n-a dat cheia.")}
+
     def moodle_api(self, site, token, functie, parametri):
         """
         Vorbește cu serviciile web ale unui Moodle, cu jetonul tău.
