@@ -7,9 +7,11 @@ fișier JSON de pe disc, lângă aplicație.
 """
 
 import base64
+import html
 import http.server
 import json
 import os
+import re
 import shutil
 import socketserver
 import sys
@@ -275,6 +277,28 @@ class Api:
                               "chiar legătura de export din Moodle."}
         return {"ok": True, "text": text}
 
+    @staticmethod
+    def _citeste_raspuns(text):
+        """
+        Moodle nu răspunde mereu în JSON. Când cheia e greșită, unele instalări
+        aruncă eroarea în XML, chiar dacă am cerut anume JSON — se întâmplă
+        înainte să apuce să aleagă formatul. Dacă n-o citim și pe aceea, am
+        spune că adresa „nu e un Moodle”, ceea ce e neadevărat și trimite omul
+        pe un drum greșit.
+        """
+        try:
+            return json.loads(text)
+        except Exception:                                         # noqa: BLE001
+            pass
+        if "<EXCEPTION" in text[:400]:
+            def scoate(eticheta):
+                m = re.search(r"<%s>(.*?)</%s>" % (eticheta, eticheta), text, re.S)
+                return html.unescape(m.group(1)).strip() if m else ""
+            return {"exception": "moodle_exception",
+                    "errorcode": scoate("ERRORCODE"),
+                    "message": scoate("MESSAGE")}
+        return None
+
     def moodle_verifica(self, site):
         """
         Spune ce se poate face la adresa asta — fără cont, fără cheie, fără
@@ -300,10 +324,10 @@ class Api:
             except Exception as e:                                # noqa: BLE001
                 return {"retea": str(e)}
             text = brut.decode("utf-8", errors="replace")
-            try:
-                return {"json": json.loads(text)}
-            except Exception:                                     # noqa: BLE001
-                return {"nu_e_json": True, "tip": tip, "inceput": text[:120]}
+            citit = self._citeste_raspuns(text)
+            if citit is not None:
+                return {"json": citit}
+            return {"nu_e_json": True, "tip": tip, "inceput": text[:120]}
 
         return {
             "ok": True,
@@ -407,12 +431,12 @@ class Api:
 
         if len(brut) > MAX_RASPUNS:
             return {"ok": False, "eroare": "Răspuns prea mare de la Moodle."}
-        try:
-            return {"ok": True, "raspuns": json.loads(brut.decode("utf-8", errors="replace"))}
-        except Exception:                                         # noqa: BLE001
+        citit = self._citeste_raspuns(brut.decode("utf-8", errors="replace"))
+        if citit is None:
             return {"ok": False,
-                    "eroare": "Moodle n-a răspuns în format JSON. Verifică adresa — "
-                              "trebuie să fie doar adresa de pornire, fără /my sau /login."}
+                    "eroare": "Moodle n-a răspuns cu date. Verifică adresa — trebuie "
+                              "să fie doar adresa de pornire, fără /my sau /login."}
+        return {"ok": True, "raspuns": citit}
 
     # ---------- diverse ----------
     def data_folder(self):

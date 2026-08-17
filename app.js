@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 19;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 20;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -3740,6 +3740,27 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     return d;
   }
 
+  /** Erorile de rețea vin în engleză tehnică; le spunem pe românește. */
+  function mesajRetea(brut) {
+    const t = String(brut || '');
+    if (/CERTIFICATE_VERIFY_FAILED|SSL/i.test(t)) {
+      return 'Certificatul de securitate al serverului nu poate fi verificat. Se ' +
+             'întâmplă când facultatea nu a pus pe server tot lanțul de certificate: ' +
+             'browserul trece cu vederea, dar o aplicație nu are voie. Încearcă ' +
+             'cealaltă adresă de Moodle a facultății, dacă are.';
+    }
+    if (/getaddrinfo|Name or service not known|nodename/i.test(t)) {
+      return 'Adresa asta nu există. Verifică scrierea ei.';
+    }
+    if (/timed out|timeout/i.test(t)) {
+      return 'Serverul nu răspunde acum. Mai încearcă peste puțin.';
+    }
+    if (/refused/i.test(t)) {
+      return 'Serverul a refuzat legătura. Poate merge doar din rețeaua facultății.';
+    }
+    return 'Nu ajung la adresa asta: ' + t;
+  }
+
   /**
    * Verifică adresa și spune ce e pornit acolo. Nu cere nici cont, nici cheie:
    * întreabă Moodle-ul cu o cheie inventată și citește ce fel de refuz vine
@@ -3755,7 +3776,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     const linii = [];
     const s = r.servicii || {}, p = r.parola || {};
 
-    if (s.retea) return { rau: true, text: 'Nu ajung la adresa asta: ' + s.retea };
+    if (s.retea) return { rau: true, text: mesajRetea(s.retea) };
     if (s.nu_e_json || s.http === 404) {
       return {
         rau: true,
@@ -3784,6 +3805,9 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     const mesajP = String((p.json && (p.json.error || '')) || '');
     if (/invalidlogin/i.test(codP)) {
       linii.push('Conectarea cu parola: merge — ai greșit doar utilizatorul sau parola.');
+    } else if (/missingparam/i.test(codP)) {
+      // s-a plâns că n-am trimis utilizator, deci pagina de cheie e acolo și merge
+      linii.push('Conectarea cu parola: merge.');
     } else if (/enablemobilewebservice|mobile/i.test(codP + ' ' + mesajP)) {
       linii.push('Serviciul pentru aplicația de mobil: OPRIT. De asta nu apare nici ' +
                  'pagina „Chei de securitate” în Moodle.');
