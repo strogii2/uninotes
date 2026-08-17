@@ -16,10 +16,69 @@ import tempfile
 import time
 from pathlib import Path
 
-RADACINA = Path(__file__).resolve().parent.parent
-SPEC = RADACINA / ".build" / "UniNotes.spec"
-DIST = RADACINA / ".build" / "dist" / "UniNotes.exe"
-INSTALAT = RADACINA / "UniNotes.exe"
+
+def radacina_principala(p: Path) -> Path:
+    """
+    Un folder de lucru separat (.claude/worktrees/…) e tot proiectul, dar
+    aplicația pe care o deschizi tu stă în copia principală. Acolo trebuie
+    instalat, altfel compilarea ar fi degeaba: ai deschide mai departe
+    versiunea veche și n-ai avea de unde să bănuiești.
+    """
+    for parinte in [p] + list(p.parents):
+        if parinte.name == "worktrees" and parinte.parent.name == ".claude":
+            return parinte.parent.parent
+    return p
+
+
+RADACINA = Path(__file__).resolve().parent.parent      # de unde se ia codul
+PRINCIPALA = radacina_principala(RADACINA)             # unde stă aplicația ta
+BUILD = PRINCIPALA / ".build"
+SPEC = BUILD / "UniNotes.spec"
+DIST = BUILD / "dist" / "UniNotes.exe"
+INSTALAT = PRINCIPALA / "UniNotes.exe"
+
+# Specificația se scrie de fiecare dată: căile din ea trebuie să arate spre
+# copia din care se compilează acum, iar aceea nu e mereu cea principală.
+SABLON = """# -*- mode: python ; coding: utf-8 -*-
+# Scris de desktop/instaleaza.py — modificările de aici se pierd la următoarea rulare.
+
+a = Analysis(
+    ['{r}/desktop/main.py'],
+    pathex=[],
+    binaries=[],
+    datas=[('{r}/index.html', 'web'), ('{r}/styles.css', 'web'), ('{r}/app.js', 'web')],
+    hiddenimports=[],
+    hookspath=[],
+    hooksconfig={{}},
+    runtime_hooks=[],
+    excludes=[],
+    noarchive=False,
+    optimize=0,
+)
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name='UniNotes',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon=['{r}/desktop/icon.ico'],
+)
+"""
 
 
 def opreste_aplicatia():
@@ -54,18 +113,20 @@ def porneste_si_citeste_versiunea(exe: Path):
 
 
 def main():
-    if not SPEC.exists():
-        print("Nu găsesc " + str(SPEC) + ".")
-        print("Rulează scriptul din copia principală a proiectului: fișierele de")
-        print("compilare stau în .build și nu sunt urmărite de git, deci lipsesc")
-        print("dintr-un folder de lucru separat.")
+    lipsa = [c for c in ("index.html", "styles.css", "app.js", "desktop/main.py")
+             if not (RADACINA / c).exists()]
+    if lipsa:
+        print("Lipsesc fișiere din " + str(RADACINA) + ": " + ", ".join(lipsa))
         return 1
 
-    print("Compilez…")
+    BUILD.mkdir(parents=True, exist_ok=True)
+    SPEC.write_text(SABLON.format(r=RADACINA.as_posix()), encoding="utf-8")
+
+    print("Compilez din: " + str(RADACINA))
     r = subprocess.run(
         [sys.executable, "-m", "PyInstaller", str(SPEC),
-         "--distpath", str(SPEC.parent / "dist"),
-         "--workpath", str(SPEC.parent / "work"), "--noconfirm"],
+         "--distpath", str(BUILD / "dist"),
+         "--workpath", str(BUILD / "work"), "--noconfirm"],
         capture_output=True, text=True)
     if r.returncode != 0 or not DIST.exists():
         print("Compilarea a eșuat:")
@@ -74,11 +135,11 @@ def main():
 
     opreste_aplicatia()
     if INSTALAT.exists():
-        shutil.copy2(INSTALAT, SPEC.parent / "UniNotes-precedent.exe")
+        shutil.copy2(INSTALAT, BUILD / "UniNotes-precedent.exe")
     shutil.copy2(DIST, INSTALAT)
 
     print("Instalat: " + str(INSTALAT))
-    print("Copie a versiunii precedente: " + str(SPEC.parent / "UniNotes-precedent.exe"))
+    print("Copie a versiunii precedente: " + str(BUILD / "UniNotes-precedent.exe"))
 
     v = porneste_si_citeste_versiunea(INSTALAT)
     if not v:
