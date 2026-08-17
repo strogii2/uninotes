@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 23;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 24;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -37,6 +37,9 @@
 
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const now = () => Date.now();
+
+  /* Pornirea salvează și ea; abia după ea, o salvare înseamnă „ai scris tu". */
+  let pornireaGata = false;
 
   /* ==========================================================
      STARE
@@ -294,6 +297,19 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   let saveFailed = false;
 
   function persist() {
+    // Ținem minte că s-a schimbat ceva de la ultima sincronizare: fără asta,
+    // aducerea automată n-ar ști dacă e sigur să înlocuiască ce e aici.
+    //
+    // Numai după ce pornirea s-a terminat: la pornire se salvează oricum o
+    // dată (datele vechi aduse la forma nouă), iar dacă am socoti și aceea
+    // drept „ai scris tu ceva", aducerea automată nu s-ar mai face niciodată.
+    if (pornireaGata) {
+      try {
+        localStorage.setItem('uninotes.sync-schimbat', String(Date.now()));
+      } catch (e) { /* mod privat */ }
+      programeazaTrimiterea();
+    }
+
     if (api()) {
       api().save_data(db).then(res => {
         if (res && res.ok === false && !saveFailed) {
@@ -5237,12 +5253,18 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   /* ==========================================================
      SINCRONIZARE ÎNTRE DISPOZITIVE
      Printr-un gist secret din contul utilizatorului: fără server de ținut,
-     fără cont nou, gratuit. Trimiterea și aducerea sunt manuale — o
-     sincronizare automată care greșește ar șterge notițe, iar asta nu se repară.
+     fără cont nou, gratuit.
+
+     Multă vreme a fost numai manuală, dinadins: o sincronizare automată care
+     greșește șterge notițe, iar asta nu se repara. Acum se repară — aplicația
+     ține copii ale notițelor — așa că se face și singură, dar numai când e
+     limpede ce trebuie făcut. Când s-a scris în amândouă părțile, alegi tu.
      ========================================================== */
   const CHEIE_JETON = 'uninotes.sync-jeton';
   const CHEIE_GIST = 'uninotes.sync-gist';
   const CHEIE_VAZUT = 'uninotes.sync-vazut';
+  const CHEIE_AUTO = 'uninotes.sync-auto';
+  const CHEIE_SCHIMBAT = 'uninotes.sync-schimbat';
   const FISIER_GIST = 'uninotes.json';
 
   const localGet = k => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
@@ -5284,7 +5306,10 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       ? 'Nesetat. Pune jetonul, apoi trimite o dată de pe dispozitivul care are datele.'
       : (gist
         ? 'Legat de gistul ' + gist.slice(0, 8) + '… ' +
-          (vazut ? '· ultima sincronizare: ' + fmtFull.format(new Date(vazut)) : '· încă nesincronizat')
+          (vazut ? '· ultima sincronizare: ' + fmtFull.format(new Date(vazut)) : '· încă nesincronizat') +
+          (localGet(CHEIE_AUTO)
+            ? (areSchimbariLocale() ? ' · sunt schimbări netrimise încă' : ' · totul e la zi')
+            : ' · sincronizarea singură e oprită')
         : 'Jeton salvat. La prima trimitere se creează gistul.');
     const l = $('#syncLabel');
     if (l) l.textContent = localGet(CHEIE_JETON) ? 'Sincronizare' : 'Sincronizare (nesetat)';
@@ -5293,6 +5318,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   function deschideSync() {
     $('#syncToken').value = localGet(CHEIE_JETON);
     $('#syncGist').value = localGet(CHEIE_GIST);
+    $('#syncAuto').checked = !!localGet(CHEIE_AUTO);
     starSync();
     $('#syncModal').showModal();
   }
@@ -5300,6 +5326,132 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   function salveazaSetariSync() {
     localSet(CHEIE_JETON, $('#syncToken').value.trim());
     localSet(CHEIE_GIST, $('#syncGist').value.trim());
+    const bifa = $('#syncAuto');
+    if (bifa) localSet(CHEIE_AUTO, bifa.checked ? '1' : '');
+  }
+
+  /* ----------------------------------------------------------
+     Sincronizarea singură
+     A fost multă vreme numai manuală, dinadins: o sincronizare automată care
+     greșește șterge notițe. Acum se poate, fiindcă greșeala se repară —
+     aplicația ține copii ale notițelor, iar înainte de orice înlocuire punem
+     starea de acum deoparte.
+
+     Regula e simplă și nu ghicește niciodată: aducem singuri doar dacă n-ai
+     scris nimic aici de la ultima sincronizare, și trimitem singuri doar dacă
+     nimeni n-a trimis altceva între timp. Când s-a scris în amândouă părțile,
+     nu alegem noi — te întrebăm.
+     ---------------------------------------------------------- */
+  const PAUZA_TRIMITERE = 25000;          // cât așteptăm după ultima tastă
+  const PAUZA_INTRE_TRIMITERI = 90000;    // ca să nu batem la ușa GitHub prea des
+  let cronoTrimitere = null, ultimaTrimitere = 0, sincronizezAcum = false;
+
+  const sincAuto = () => !!(localGet(CHEIE_AUTO) && localGet(CHEIE_JETON) && localGet(CHEIE_GIST));
+  const areSchimbariLocale = () => (+localGet(CHEIE_SCHIMBAT) || 0) > (+localGet(CHEIE_VAZUT) || 0);
+
+  function programeazaTrimiterea() {
+    if (!sincAuto()) return;
+    clearTimeout(cronoTrimitere);
+    cronoTrimitere = setTimeout(trimiteSingur, PAUZA_TRIMITERE);
+  }
+
+  /** Copia de siguranță de dinaintea unei înlocuiri venite de pe cont. */
+  async function copiazaInainteDeInlocuire() {
+    try { if (api() && api().copie_acum) await api().copie_acum(); } catch (e) { /* mergem */ }
+  }
+
+  async function trimiteSingur() {
+    if (!sincAuto() || sincronizezAcum) return;
+    if (!areSchimbariLocale()) return;
+    if (Date.now() - ultimaTrimitere < PAUZA_INTRE_TRIMITERI) {
+      clearTimeout(cronoTrimitere);
+      cronoTrimitere = setTimeout(trimiteSingur, PAUZA_INTRE_TRIMITERI);
+      return;
+    }
+    const jeton = localGet(CHEIE_JETON), gist = localGet(CHEIE_GIST);
+    sincronizezAcum = true;
+    try {
+      // dacă între timp a trimis alt dispozitiv, nu călcăm peste: întrebăm
+      let deja = null;
+      try { deja = await citesteGist(jeton, gist); } catch (e) { deja = null; }
+      if (deja && deja.actualizat > (+localGet(CHEIE_VAZUT) || 0)) {
+        anuntaCiocnirea(deja);
+        return;
+      }
+
+      const pack = await pachetDeTrimis();
+      const r = await fetch('https://api.github.com/gists/' + encodeURIComponent(gist), {
+        method: 'PATCH', headers: anteteGitHub(jeton),
+        body: JSON.stringify({ files: { [FISIER_GIST]: { content: JSON.stringify(pack) } } })
+      });
+      if (!r.ok) throw new Error(mesajGitHub(r.status));
+      localSet(CHEIE_VAZUT, String(pack.actualizat));
+      localSet(CHEIE_SCHIMBAT, String(pack.actualizat));
+      ultimaTrimitere = Date.now();
+      starSync();
+    } catch (e) {
+      // fără internet acum: nu deranjăm pe nimeni, reîncercăm la următoarea salvare
+      console.info('[UniNotes] trimiterea automată n-a reușit:', e.message || e);
+    } finally {
+      sincronizezAcum = false;
+    }
+  }
+
+  function anuntaCiocnirea(deja) {
+    toast('Ai scris și aici, și pe alt dispozitiv. Alege tu ce rămâne.', 'err',
+      { label: 'Rezolvă', fn: deschideSync }, 10000);
+    const el = $('#syncStare');
+    if (el) {
+      const cate = n => n + (n === 1 ? ' notiță' : ' notițe');
+      el.textContent = 'S-a scris în amândouă părțile. Pe cont sunt ' +
+        cate(deja.db.notes.length) + ', trimise la ' +
+        fmtFull.format(new Date(deja.actualizat)) + '; aici sunt ' + cate(db.notes.length) +
+        '. Alege „Trimite" ca să rămână ce e aici, sau „Adu" ca să rămână ce e pe cont. ' +
+        'Oricum ai alege, starea de acum e pusă deoparte în Copii.';
+    }
+  }
+
+  /**
+   * La pornire: dacă pe cont e ceva mai nou și aici n-ai scris nimic între
+   * timp, aducem în tăcere. Dacă ai scris și aici, nu atingem nimic.
+   */
+  async function aduSingurLaPornire() {
+    if (!sincAuto() || sincronizezAcum) return;
+    const jeton = localGet(CHEIE_JETON), gist = localGet(CHEIE_GIST);
+    sincronizezAcum = true;
+    try {
+      const pack = await citesteGist(jeton, gist);
+      const vazut = +localGet(CHEIE_VAZUT) || 0;
+      if (!pack || !(pack.actualizat > vazut)) return;      // n-are nimic nou
+
+      if (areSchimbariLocale()) { anuntaCiocnirea(pack); return; }
+
+      const curatat = normalize(pack.db);
+      if (!curatat) return;
+      await copiazaInainteDeInlocuire();
+
+      db = curatat;
+      ui.activeId = null;
+      if (pack.poze && typeof pack.poze === 'object') {
+        for (const id of Object.keys(pack.poze)) {
+          if (/^[A-Za-z0-9_-]+$/.test(id) && /^data:image\//.test(pack.poze[id])) {
+            await poze.pune(id, pack.poze[id]);
+          }
+        }
+        urlPoze.clear();
+      }
+      persist();
+      localSet(CHEIE_VAZUT, String(pack.actualizat));
+      localSet(CHEIE_SCHIMBAT, String(pack.actualizat));
+      renderSidebar(); renderList(); renderEditor();
+      starSync();
+      toast('Adus de pe celălalt dispozitiv: ' + db.notes.length +
+            (db.notes.length === 1 ? ' notiță' : ' notițe'), 'ok');
+    } catch (e) {
+      console.info('[UniNotes] aducerea automată n-a reușit:', e.message || e);
+    } finally {
+      sincronizezAcum = false;
+    }
   }
 
   async function citesteGist(jeton, gist) {
@@ -5359,8 +5511,20 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       if (!r.ok) throw new Error(mesajGitHub(r.status));
 
       const info = await r.json();
-      if (info && info.id) { gist = info.id; localSet(CHEIE_GIST, gist); $('#syncGist').value = gist; }
+      if (info && info.id) {
+        gist = info.id;
+        localSet(CHEIE_GIST, gist);
+        $('#syncGist').value = gist;
+        // prima trimitere reușită pornește și sincronizarea singură: de acum
+        // are de unde aduce și unde trimite
+        if (!localGet(CHEIE_AUTO)) {
+          localSet(CHEIE_AUTO, '1');
+          if ($('#syncAuto')) $('#syncAuto').checked = true;
+        }
+      }
       localSet(CHEIE_VAZUT, String(pack.actualizat));
+      localSet(CHEIE_SCHIMBAT, String(pack.actualizat));
+      ultimaTrimitere = Date.now();
       starSync();
       const nrPoze = Object.keys(pack.poze).length;
       toast('Trimis pe cont: ' + db.notes.length + ' notițe' +
@@ -5401,6 +5565,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
 
     const curatat = normalize(pack.db);
     if (!curatat) { toast('Datele de pe cont nu se pot citi.', 'err'); return; }
+    await copiazaInainteDeInlocuire();     // ce e aici acum, pus deoparte
     db = curatat;
     ui.activeId = null;
     ui.filter = { type: 'all', subjectIds: [], tag: null };
@@ -5416,6 +5581,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
 
     persist();
     localSet(CHEIE_VAZUT, String(pack.actualizat || now()));
+    localSet(CHEIE_SCHIMBAT, String(pack.actualizat || now()));
     applyTheme(db.settings.themeSetByUser ? (db.settings.theme || 'dark') : 'dark');
     starSync();
     renderSidebar(); renderList(); renderEditor();
@@ -6296,9 +6462,16 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     urmaresteTastatura();
     sfatGesturi();
     anuntaOrarul();
+    pornireaGata = true;                  // de aici încolo, salvările sunt ale tale
     setTimeout(curataPozeOrfane, 4000);   // după ce pornirea s-a liniștit
     setTimeout(improspateazaMoodle, 6000);
     setTimeout(spuneAmintirile, 2500);    // termenele apropiate, la fiecare deschidere
+    setTimeout(aduSingurLaPornire, 1500);
+
+    // când pleci din aplicație, ce ai scris trebuie să apuce să plece și el
+    const laPlecare = () => { if (sincAuto() && areSchimbariLocale()) trimiteSingur(); };
+    document.addEventListener('visibilitychange', () => { if (document.hidden) laPlecare(); });
+    window.addEventListener('pagehide', laPlecare);
   }
 
   document.addEventListener('DOMContentLoaded', boot);

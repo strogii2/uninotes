@@ -1160,6 +1160,17 @@ body{-webkit-tap-highlight-color:transparent}
   .desen-bara .btn__text{display:none}
 }
 
+/* o bifă cu explicație dedesubt, pentru alegeri care merită lămurite */
+.bifa{
+  display:flex;align-items:flex-start;gap:var(--sp-3);cursor:pointer;
+  padding:10px var(--sp-3);border:1px solid var(--border);border-radius:var(--r-md);
+  background:var(--surface-2);
+}
+.bifa input{width:19px;height:19px;flex:none;margin-top:1px;accent-color:var(--primary);cursor:pointer}
+.bifa span{display:flex;flex-direction:column;gap:3px;min-width:0}
+.bifa strong{font-size:14px;font-weight:600}
+.bifa small{font-size:12.5px;line-height:1.55;color:var(--fg-muted)}
+
 /* ---- copii de siguranță ---- */
 .copii{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:var(--sp-3)}
 .copie{
