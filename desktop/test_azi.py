@@ -102,6 +102,19 @@ def probe(window):
 
         out["la_pornire"] = citeste(window.evaluate_js(ECRAN))
 
+        # ---- titlul: data de azi si ceasul, cu secunde, viu ----
+        out["titlu_zi"] = window.evaluate_js(
+            "(document.querySelector('.azi-titlu__zi') || {}).textContent || ''")
+        primul = window.evaluate_js(
+            "(document.querySelector('#aziCeas') || {}).textContent || ''")
+        time.sleep(2.5)
+        al_doilea = window.evaluate_js(
+            "(document.querySelector('#aziCeas') || {}).textContent || ''")
+        out["ceas"] = {"intai": primul, "apoi": al_doilea,
+                       "are_secunde": len(primul.split(":")) == 3,
+                       "merge": primul != al_doilea}
+        out["titlul_are_data_de_azi"] = str(AZI.split("-")[2]).lstrip("0") in out["titlu_zi"]
+
         # ---- „Toate notițele” ne scoate din Azi ----
         window.evaluate_js("""
             document.querySelector('.nav__item[data-filter="all"]').click();

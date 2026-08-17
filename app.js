@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 26;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 27;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -340,6 +340,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   const fmtDay = new Intl.DateTimeFormat('ro-RO', { day: 'numeric', month: 'short' });
   const fmtFull = new Intl.DateTimeFormat('ro-RO', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   const fmtZi = new Intl.DateTimeFormat('ro-RO', { weekday: 'long', day: 'numeric', month: 'long' });
+  const fmtDataLunga = new Intl.DateTimeFormat('ro-RO', { day: 'numeric', month: 'long' });
   const fmtCeas = new Intl.DateTimeFormat('ro-RO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   const cuMajuscula = s => s.charAt(0).toUpperCase() + s.slice(1);
@@ -352,6 +353,10 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     const bate = () => {
       const d = new Date();
       el.textContent = cuMajuscula(fmtZi.format(d)) + ' · ' + fmtCeas.format(d);
+      // titlul ecranului „Azi” bate din același ceas: două cronometre pentru
+      // aceeași secundă s-ar desincroniza, iar cifrele ar sări una după alta
+      const t = $('#aziCeas');
+      if (t) t.textContent = fmtCeas.format(d);
     };
     bate();
     clearInterval(ceasTimer);
@@ -1724,7 +1729,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     ui.ecran = 'azi';
     $$('.nav__item').forEach(b => b.classList.remove('is-active'));
     $('#aziBtn').classList.add('is-active');
-    $('#listTitle').textContent = salutAzi();
+    scrieTitlulAzi();
     $('#aziPane').hidden = false;
     $('#notesList').hidden = true;
     const sortare = $('.sort'); if (sortare) sortare.hidden = true;
@@ -1733,11 +1738,25 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     closeNav();
   }
 
-  function salutAzi() {
-    const o = new Date().getHours();
-    const parte = o < 5 ? 'Noapte bună' : (o < 11 ? 'Bună dimineața'
-                : (o < 18 ? 'Bună ziua' : 'Bună seara'));
-    return parte + ', ' + ZILE[ziAzi()].toLowerCase();
+  /**
+   * Titlul ecranului: ziua de azi și ceasul, cu secunde.
+   * Ceasul stă într-un element al lui, ca să-l poată împrospăta bătaia de
+   * fiecare secundă fără să rescrie și data — data nu se schimbă oricum.
+   */
+  function scrieTitlulAzi() {
+    const el = $('#listTitle');
+    if (!el) return;
+    const d = new Date();
+    el.innerHTML = '';
+    const zi = document.createElement('span');
+    zi.className = 'azi-titlu__zi';
+    zi.textContent = 'Azi, ' + ZILE[ziAzi()].toLowerCase() + ' ' + fmtDataLunga.format(d);
+    const ceas = document.createElement('span');
+    ceas.className = 'azi-titlu__ceas';
+    ceas.id = 'aziCeas';
+    ceas.textContent = fmtCeas.format(d);
+    el.appendChild(zi);
+    el.appendChild(ceas);
   }
 
   /* ==========================================================
@@ -5595,10 +5614,70 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     if (l) l.textContent = localGet(CHEIE_JETON) ? 'Sincronizare' : 'Sincronizare (nesetat)';
   }
 
+  /* ---- codul de legătură ----
+     Cheia are patruzeci de semne, iar identificatorul gistului încă treizeci.
+     Scrise de mână pe telefon, se greșesc. Le punem pe amândouă într-un singur
+     cod, pe care îl copiezi de pe dispozitivul deja legat și îl lipești o dată
+     pe celălalt. Codul conține cheia, deci e ca o parolă: trimite-l doar ție. */
+  const SEMN_COD = 'UNINOTES1:';
+
+  function facCodulDeLegatura() {
+    const jeton = localGet(CHEIE_JETON), gist = localGet(CHEIE_GIST);
+    if (!jeton || !gist) return '';
+    try {
+      return SEMN_COD + btoa(unescape(encodeURIComponent(jeton + '|' + gist)));
+    } catch (e) { return ''; }
+  }
+
+  function desfacCodulDeLegatura(cod) {
+    const brut = String(cod || '').trim().replace(/\s+/g, '');
+    if (brut.indexOf(SEMN_COD) !== 0) return null;
+    try {
+      const text = decodeURIComponent(escape(atob(brut.slice(SEMN_COD.length))));
+      const parti = text.split('|');
+      if (parti.length !== 2 || !parti[0] || !parti[1]) return null;
+      return { jeton: parti[0], gist: parti[1] };
+    } catch (e) { return null; }
+  }
+
+  function randeazaCodulDeLegatura() {
+    const cap = $('#codLegaturaCap'), copiaza = $('#syncCopiazaCod');
+    if (!cap) return;
+    const legat = !!(localGet(CHEIE_JETON) && localGet(CHEIE_GIST));
+    if (copiaza) copiaza.hidden = !legat;
+    cap.textContent = legat
+      ? 'Dispozitivul ăsta e legat. Copiază codul și lipește-l pe celălalt — atât.'
+      : 'Ai deja un dispozitiv legat? Lipește aici codul copiat de acolo.';
+  }
+
+  async function folosesteCodulDeLegatura() {
+    const date = desfacCodulDeLegatura($('#syncCod').value);
+    if (!date) {
+      $('#syncStare').textContent = 'Codul nu e bun. Copiază-l din nou, întreg, ' +
+                                    'de pe dispozitivul deja legat.';
+      return;
+    }
+    localSet(CHEIE_JETON, date.jeton);
+    localSet(CHEIE_GIST, date.gist);
+    localSet(CHEIE_AUTO, '1');
+    $('#syncToken').value = date.jeton;
+    $('#syncGist').value = date.gist;
+    $('#syncAuto').checked = true;
+    $('#syncCod').value = '';
+    randeazaCodulDeLegatura();
+    // dispozitivul care primește codul e, aproape sigur, cel gol: aducem
+    await aduSync();
+  }
+
   function deschideSync() {
     $('#syncToken').value = localGet(CHEIE_JETON);
     $('#syncGist').value = localGet(CHEIE_GIST);
     $('#syncAuto').checked = !!localGet(CHEIE_AUTO);
+    $('#syncCod').value = '';
+    randeazaCodulDeLegatura();
+    // prima oară n-ai de unde copia, deci pliantul cu pașii stă deschis
+    const pliant = $('#syncPrimaOara');
+    if (pliant) pliant.open = !(localGet(CHEIE_JETON) && localGet(CHEIE_GIST));
     starSync();
     $('#syncModal').showModal();
   }
@@ -5806,6 +5885,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       localSet(CHEIE_SCHIMBAT, String(pack.actualizat));
       ultimaTrimitere = Date.now();
       starSync();
+      randeazaCodulDeLegatura();     // de acum are ce copia pentru celălalt
       const nrPoze = Object.keys(pack.poze).length;
       toast('Trimis pe cont: ' + db.notes.length + ' notițe' +
             (nrPoze ? ' și ' + nrPoze + (nrPoze === 1 ? ' poză' : ' poze') : ''), 'ok');
@@ -6538,6 +6618,29 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     });
     pe('#syncToken', 'keydown', e => {
       if (e.key === 'Enter') { e.preventDefault(); $('#syncLeaga').click(); }
+    });
+
+    pe('#syncFolosesteCod', 'click', folosesteCodulDeLegatura);
+    pe('#syncCod', 'keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); folosesteCodulDeLegatura(); }
+    });
+    pe('#syncCopiazaCod', 'click', async () => {
+      const cod = facCodulDeLegatura();
+      if (!cod) { toast('Leagă întâi dispozitivul ăsta.', 'err'); return; }
+      let pus = false;
+      try {
+        await navigator.clipboard.writeText(cod);
+        pus = true;
+      } catch (e) {
+        // fără drept la clipboard (se întâmplă în fereastra de Windows):
+        // punem codul în câmp și îl selectăm, ca să-l poți copia tu
+        const camp = $('#syncCod');
+        camp.value = cod;
+        camp.focus();
+        camp.select();
+      }
+      toast(pus ? 'Cod copiat — lipește-l pe celălalt dispozitiv'
+                : 'Codul e în câmp, selectat: copiază-l cu Ctrl+C', 'ok', null, 7000);
     });
     pe('#syncToken', 'change', () => { salveazaSetariSync(); starSync(); });
     pe('#syncGist', 'change', () => { salveazaSetariSync(); starSync(); });

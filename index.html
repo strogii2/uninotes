@@ -825,8 +825,27 @@ window.addEventListener('unhandledrejection', function (e) {
   <div class="modal__body">
     <h2 class="modal__title">Aceleași notițe pe telefon și pe calculator</h2>
 
-    <!-- Doi pași, în ordine. Restul — gistul, trimite/adu, ce vede altcineva —
-         stă strâns mai jos: nu-ți trebuie ca să pornești. -->
+    <!-- Cel mai greu era să muți cheia pe al doilea dispozitiv: 40 de semne
+         scrise de mână pe telefon. Aici e o singură lipire. -->
+    <div class="cod-legatura" id="codLegatura">
+      <p class="cod-legatura__cap" id="codLegaturaCap"></p>
+      <div class="cod-legatura__actiuni">
+        <button type="button" class="btn btn--primary" id="syncCopiazaCod" hidden>
+          <svg class="ic"><use href="#i-key"></use></svg>
+          <span>Copiază codul pentru celălalt dispozitiv</span>
+        </button>
+        <input id="syncCod" placeholder="Lipește aici codul de pe celălalt dispozitiv"
+               autocomplete="off" spellcheck="false">
+        <button type="button" class="btn btn--primary" id="syncFolosesteCod">
+          <svg class="ic"><use href="#i-check"></use></svg>
+          <span>Leagă-mă</span>
+        </button>
+      </div>
+    </div>
+
+    <details class="moodle__pliant" id="syncPrimaOara">
+      <summary>Prima oară? De aici iei codul (o singură dată, pe un singur dispozitiv)</summary>
+
     <ol class="pasi">
       <li class="pas">
         <span class="pas__nr">1</span>
@@ -858,6 +877,7 @@ window.addEventListener('unhandledrejection', function (e) {
         </div>
       </li>
     </ol>
+    </details>
 
     <p class="modal__text modal__text--mic" id="syncStare"></p>
 

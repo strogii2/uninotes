@@ -155,6 +155,60 @@ def probe(window):
               });
             })()
         """))
+        # ---- codul de legatura: o singura lipire pe al doilea dispozitiv ----
+        out["cod_facut"] = window.evaluate_js("""
+            (function () {
+              document.querySelector('#syncCopiazaCod').click();
+              return document.querySelector('#syncCod').value ||
+                     'copiat in clipboard';
+            })()
+        """)
+        time.sleep(1)
+
+        # Drumul care conteaza e al doilea dispozitiv: un cod facut in alta
+        # parte, lipit aici, trebuie sa puna si cheia, si gistul, si sa aduca.
+        out["dupa_lipit_cod"] = citeste(window.evaluate_js(r"""
+            (function () {
+              var cod = 'UNINOTES1:' + btoa('alta-cheie|alt-gist');
+              document.querySelector('#syncCod').value = cod;
+              document.querySelector('#syncFolosesteCod').click();
+              return JSON.stringify({trimis: true});
+            })()
+        """))
+        time.sleep(3)
+        out["ce_a_pus_codul"] = citeste(window.evaluate_js(r"""
+            (function () {
+              return JSON.stringify({
+                cheie: localStorage.getItem('uninotes.sync-jeton'),
+                gist: localStorage.getItem('uninotes.sync-gist'),
+                singura: !!localStorage.getItem('uninotes.sync-auto'),
+                campul_golit: document.querySelector('#syncCod').value === ''
+              });
+            })()
+        """))
+        # punem la loc legatura de proba, ca sa mearga restul testului
+        window.evaluate_js("""
+            localStorage.setItem('uninotes.sync-jeton', 'jeton-de-proba');
+            localStorage.setItem('uninotes.sync-gist', 'gistdeproba');
+            'ok'
+        """)
+
+        # un cod stricat nu are voie sa strice legatura de acum
+        window.evaluate_js("""
+            document.querySelector('#syncCod').value = 'ceva-gresit';
+            document.querySelector('#syncFolosesteCod').click();
+            'ok'
+        """)
+        time.sleep(1.5)
+        out["cod_stricat"] = citeste(window.evaluate_js(r"""
+            (function () {
+              return JSON.stringify({
+                stare: (document.querySelector('#syncStare') || {}).textContent || '',
+                cheia_a_ramas: !!localStorage.getItem('uninotes.sync-jeton')
+              });
+            })()
+        """))
+
         window.evaluate_js("""
             var b = document.querySelector('#syncModal [data-close]');
             if (b) b.click(); else document.querySelector('#syncModal').close();
