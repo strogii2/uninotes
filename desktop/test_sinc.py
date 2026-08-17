@@ -129,6 +129,39 @@ def probe(window):
             time.sleep(0.5)
         window.evaluate_js(GITHUB_FALS)
 
+        # ---- 0. legarea dintr-un singur pas: cheia, apoi "Gata, leaga-le" ----
+        window.evaluate_js("""
+            ['uninotes.sync-jeton', 'uninotes.sync-gist', 'uninotes.sync-auto',
+             'uninotes.sync-vazut', 'uninotes.sync-schimbat', '__gist_fals']
+              .forEach(function (k) { localStorage.removeItem(k); });
+            document.querySelector('#syncBtn').click();
+            'ok'
+        """)
+        time.sleep(1.2)
+        window.evaluate_js("""
+            document.querySelector('#syncToken').value = 'jeton-de-proba';
+            document.querySelector('#syncLeaga').click();
+            'ok'
+        """)
+        time.sleep(5)
+        out["dintr_un_pas"] = citeste(window.evaluate_js(r"""
+            (function () {
+              return JSON.stringify({
+                gist_salvat: !!localStorage.getItem('uninotes.sync-gist'),
+                singura_pornita: !!localStorage.getItem('uninotes.sync-auto'),
+                bifa: document.querySelector('#syncAuto').checked,
+                are_ceva_pe_cont: !!localStorage.getItem('__gist_fals'),
+                stare: (document.querySelector('#syncStare') || {}).textContent || ''
+              });
+            })()
+        """))
+        window.evaluate_js("""
+            var b = document.querySelector('#syncModal [data-close]');
+            if (b) b.click(); else document.querySelector('#syncModal').close();
+            'ok'
+        """)
+        time.sleep(0.8)
+
         # ---- 1. pe cont e ceva nou, aici nimic scris → se aduce singur ----
         window.evaluate_js("""
             localStorage.setItem('uninotes.sync-jeton', 'jeton-de-proba');

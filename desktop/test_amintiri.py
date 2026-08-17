@@ -140,6 +140,34 @@ def probe(window):
         adauga(window, "Fara amintire", PESTE_2, [])
         out["a_doua_oara"] = citeste(window.evaluate_js(STARE))
 
+        # ---- optiunea care le prinde pe toate deodata ----
+        def toate(eticheta):
+            window.evaluate_js("""
+                var b = Array.prototype.slice.call(
+                    document.querySelectorAll('#toateAmintirile .optiune'))
+                  .filter(function (x) { return x.textContent.trim() === %s; })[0];
+                if (b) b.click();
+                'ok'
+            """ % json.dumps(eticheta))
+            time.sleep(2)
+            date_disc = json.loads(app.DATA_FILE.read_text(encoding="utf-8"))
+            return {t["titlu"]: t.get("aminteste") for t in date_disc.get("termene") or []}
+
+        out["starea_butoanelor_la_toate"] = citeste(window.evaluate_js(r"""
+            (function () {
+              return JSON.stringify(Array.prototype.slice.call(
+                document.querySelectorAll('#toateAmintirile .optiune')).map(function (b) {
+                  return {
+                    text: b.textContent.trim(),
+                    aprins: b.classList.contains('is-active'),
+                    partial: b.classList.contains('e-partial')
+                  };
+                }));
+            })()
+        """))
+        out["dupa_pus_la_toate"] = toate("Cu o săptămână înainte")
+        out["dupa_scos_de_la_toate"] = toate("Cu o săptămână înainte")
+
         # ---- fisierul de calendar ----
         window.evaluate_js("document.querySelector('#termeneCalendar').click(); 'ok'")
         time.sleep(3)

@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 25;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 26;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -2746,6 +2746,47 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     setTimeout(() => window.print(), 60);   // o clipă, ca stilurile de print să prindă conținutul
   }
 
+  /**
+   * Întoarcerea din printare, pe telefon.
+   *
+   * Cât ține previzualizarea, foaia de stil de print ascunde toată aplicația și
+   * lasă doar foaia de tipar, care e lată cât o pagină A4. Telefonul, văzând
+   * dintr-odată o pagină mult mai lată decât ecranul, își schimbă mărirea ca s-o
+   * încapă — și rămâne așa și după ce ieși: totul apare micșorat.
+   *
+   * Nu există o comandă „pune mărirea la loc”, dar rescrierea etichetei de
+   * viewport îl face pe browser să măsoare din nou de la zero. Punem înapoi și
+   * derularea, fiindcă ascunderea paginii o pierde.
+   */
+  function legPrintarea() {
+    let derulare = 0, derulareLista = 0, derulareEditor = 0;
+
+    window.addEventListener('beforeprint', () => {
+      derulare = window.scrollY || 0;
+      const l = $('#notesList'), e = $('.editor__scroll');
+      derulareLista = l ? l.scrollTop : 0;
+      derulareEditor = e ? e.scrollTop : 0;
+    });
+
+    window.addEventListener('afterprint', () => {
+      const vp = document.querySelector('meta[name="viewport"]');
+      if (vp) {
+        const cum = vp.getAttribute('content');
+        vp.setAttribute('content', cum + ', maximum-scale=1');
+        setTimeout(() => vp.setAttribute('content', cum), 350);
+      }
+      requestAnimationFrame(() => {
+        window.scrollTo(0, derulare);
+        const l = $('#notesList'), e = $('.editor__scroll');
+        if (l) l.scrollTop = derulareLista;
+        if (e) e.scrollTop = derulareEditor;
+        potrivesteCasetele();             // casetele s-au măsurat cât erau ascunse
+      });
+      // foaia de tipar nu mai e de folos: o golim, ca să nu țină pozele în memorie
+      setTimeout(() => { const p = $('#printArea'); if (p) p.innerHTML = ''; }, 500);
+    });
+  }
+
   async function importText(text) {
     try {
       const data = JSON.parse(text);
@@ -4098,6 +4139,64 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     }
   }
 
+  /**
+   * Amintirile pentru toate termenele deodată.
+   *
+   * Butonul e aprins doar dacă TOATE termenele nerezolvate au amintirea aceea;
+   * altfel ar minți. O apăsare o pune la toate, încă una o scoate de la toate.
+   */
+  function termeneNerezolvate() {
+    return termene().filter(t => !t.gata && zileRamase(t.data) !== null);
+  }
+
+  function randeazaToateAmintirile() {
+    const gazda = $('#toateAmintirile');
+    if (!gazda) return;
+    const lista = termeneNerezolvate();
+    gazda.innerHTML = '';
+
+    AMINTIRI.forEach(a => {
+      const cate = lista.filter(t => zileleAmintirii(t).indexOf(a[0]) >= 0).length;
+      const laToate = lista.length > 0 && cate === lista.length;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'optiune' + (laToate ? ' is-active' : (cate ? ' e-partial' : ''));
+      b.setAttribute('aria-pressed', String(laToate));
+      b.textContent = a[1];
+      b.disabled = !lista.length;
+      b.title = cate && !laToate ? 'Pusă la ' + cate + ' din ' + lista.length : '';
+      b.addEventListener('click', () => puneAmintireLaToate(a[0], !laToate));
+      gazda.appendChild(b);
+    });
+
+    const ajutor = $('#toateAmintirileAjutor');
+    if (ajutor) {
+      ajutor.textContent = !lista.length
+        ? 'N-ai niciun termen deschis.'
+        : 'Se aplică la toate cele ' + lista.length +
+          (lista.length === 1 ? ' termen deschis' : ' termene deschise') +
+          '. Fiecare termen poate fi schimbat și separat, apăsând pe el.';
+    }
+  }
+
+  function puneAmintireLaToate(zi, pornit) {
+    const lista = termeneNerezolvate();
+    if (!lista.length) return;
+    lista.forEach(t => {
+      const zile = zileleAmintirii(t).slice();
+      const i = zile.indexOf(zi);
+      if (pornit && i < 0) zile.push(zi);
+      if (!pornit && i >= 0) zile.splice(i, 1);
+      t.aminteste = zile.sort((a, b) => b - a);
+      t.anuntate = [];                    // s-a schimbat înțelegerea: o luăm de la capăt
+    });
+    salveazaTermene();
+    randeazaToateAmintirile();
+    toast(pornit ? 'Amintire pusă la toate termenele' : 'Amintire scoasă de la toate', 'ok');
+    if (pornit && !notificariPornite()) cerePermisiuneAnunturi();
+    else spuneAmintirile();
+  }
+
   /* ---- calendarul telefonului ---- */
   const dataICal = s => String(s || '').replace(/-/g, '');
   const scapaICal = s => String(s || '')
@@ -4161,11 +4260,13 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     renderTermene();
     renderSidebar();
     randeazaBaraAnunturi();
+    randeazaToateAmintirile();
   }
 
   function deschideTermene() {
     renderTermene();
     randeazaBaraAnunturi();
+    randeazaToateAmintirile();
     closeNav();
     $('#termeneDlg').showModal();
   }
@@ -6424,6 +6525,20 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     pe('#syncBtn', 'click', deschideSync);
     pe('#syncTrimite', 'click', trimiteSync);
     pe('#syncAdu', 'click', aduSync);
+    /* Un singur pas: salvează cheia, face gistul și pornește sincronizarea. */
+    pe('#syncLeaga', 'click', async () => {
+      const jeton = ($('#syncToken').value || '').trim();
+      if (!jeton) {
+        $('#syncStare').textContent = 'Lipește întâi cheia de la GitHub.';
+        return;
+      }
+      localSet(CHEIE_AUTO, '1');
+      $('#syncAuto').checked = true;
+      await trimiteSync();
+    });
+    pe('#syncToken', 'keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); $('#syncLeaga').click(); }
+    });
     pe('#syncToken', 'change', () => { salveazaSetariSync(); starSync(); });
     pe('#syncGist', 'change', () => { salveazaSetariSync(); starSync(); });
 
@@ -6531,6 +6646,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     applyTheme(db.settings.themeSetByUser ? (db.settings.theme || 'dark') : 'dark');
 
     bind();
+    legPrintarea();
     porneșteCeasul();
     renderSidebar();
     renderList();
