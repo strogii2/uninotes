@@ -44,6 +44,7 @@ FALS = r"""
 
 
 def adauga(window, titlu, data, aminteste, nota=""):
+    """`aminteste` e lista etichetelor de apăsat, ex. ['Cu o zi înainte']."""
     window.evaluate_js("""
         document.querySelector('#termenAddBtn').click();
         'ok'
@@ -54,12 +55,20 @@ def adauga(window, titlu, data, aminteste, nota=""):
         d.querySelector('#termenTitlu').value = %s;
         d.querySelector('#termenData').value = %s;
         d.querySelector('#termenNota').value = %s;
-        var a = d.querySelector('#termenAminteste');
-        a.value = %s;
-        a.dispatchEvent(new Event('change', {bubbles: true}));
-        d.querySelector('button[type="submit"]').click();
+        var vrute = %s;
+        // pornim de la ce e bifat implicit si aducem la ce cere testul
+        Array.prototype.slice.call(d.querySelectorAll('#termenAminteste .optiune'))
+          .forEach(function (b) {
+            var trebuie = vrute.indexOf(b.textContent.trim()) >= 0;
+            if (b.classList.contains('is-active') !== trebuie) b.click();
+          });
         'ok'
     """ % (json.dumps(titlu), json.dumps(data), json.dumps(nota), json.dumps(aminteste)))
+    time.sleep(0.6)
+    window.evaluate_js("""
+        document.querySelector('#termenModal button[type="submit"]').click();
+        'ok'
+    """)
     time.sleep(1.5)
 
 
@@ -68,9 +77,12 @@ STARE = r"""
   var out = {};
   var randuri = Array.prototype.slice.call(document.querySelectorAll('.termen'));
   out.termene = randuri.map(function (r) {
+    var c = r.querySelector('.termen__clopot');
     return {
       titlu: (r.querySelector('.termen__titlu') || {}).textContent || '',
-      clopot: !!r.querySelector('.termen__clopot')
+      clopot: !!c,
+      cate: c ? ((c.querySelector('em') || {}).textContent || '1') : '',
+      explicatie: c ? (c.getAttribute('title') || '') : ''
     };
   });
   var bara = document.querySelector('#termeneAnuntBara');
@@ -105,26 +117,27 @@ def probe(window):
         window.evaluate_js("document.querySelector('#termeneBtn').click(); 'ok'")
         time.sleep(1.2)
 
-        # trei termene: unul aproape cu amintire, unul departe, unul trecut
-        adauga(window, "Predare proiect POO, partea a II-a", PESTE_2, "3",
-               "de predat pe platformă")
-        adauga(window, "Examen Analiză", PESTE_30, "1")
-        adauga(window, "Referat vechi", ACUM_5, "1")
+        # Examenul are TREI amintiri deodata; e la 30 de zile, deci acum
+        # trebuie sa sune doar cea de o saptamana? nu — nici aceea: 30 > 7.
+        adauga(window, "Predare proiect POO, partea a II-a", PESTE_2,
+               ["Cu 3 zile înainte", "În ziua respectivă"], "de predat pe platformă")
+        adauga(window, "Examen Analiză", PESTE_30,
+               ["Cu o zi înainte", "Cu 3 zile înainte", "Cu o săptămână înainte"])
+        adauga(window, "Referat vechi", ACUM_5, ["Cu o zi înainte"])
 
         out["dupa_adaugare"] = citeste(window.evaluate_js(STARE))
 
-        # ---- notificarile: numai cele intrate in fereastra de amintire ----
         date_disc = json.loads(app.DATA_FILE.read_text(encoding="utf-8"))
         termene = {t["titlu"]: t for t in date_disc.get("termene") or []}
         out["salvat_aminteste"] = {t["titlu"]: t.get("aminteste") for t in termene.values()}
-        out["anuntat_pentru_cel_apropiat"] = bool(
-            termene.get("Predare proiect POO, partea a II-a", {}).get("anuntat"))
-        out["nu_a_anuntat_cel_departe"] = not termene.get("Examen Analiză", {}).get("anuntat")
-        out["nu_a_anuntat_cel_trecut"] = not termene.get("Referat vechi", {}).get("anuntat")
+        out["anuntate_la_cel_apropiat"] = termene.get(
+            "Predare proiect POO, partea a II-a", {}).get("anuntate")
+        out["nu_a_anuntat_cel_departe"] = not termene.get("Examen Analiză", {}).get("anuntate")
+        out["nu_a_anuntat_cel_trecut"] = not termene.get("Referat vechi", {}).get("anuntate")
 
         # ---- a doua trecere, in aceeasi zi, nu mai anunta inca o data ----
         window.evaluate_js("window.__anunturi = []; 'ok'")
-        adauga(window, "Fara amintire", PESTE_2, "")
+        adauga(window, "Fara amintire", PESTE_2, [])
         out["a_doua_oara"] = citeste(window.evaluate_js(STARE))
 
         # ---- fisierul de calendar ----

@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 21;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 22;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -186,6 +186,17 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
 
     // termenele au apărut și mai târziu decât orarul
     if (!Array.isArray(parsed.termene)) parsed.termene = [];
+    /* Amintirile: la început una singură, ținută ca text („1”); acum o listă. */
+    const curataAmintiri = v => {
+      const brut = Array.isArray(v) ? v : (v === 0 || v ? [v] : []);
+      const out = [];
+      brut.map(Number).forEach(n => {
+        if (!isFinite(n) || n < 0 || n > 400) return;
+        n = Math.round(n);
+        if (out.indexOf(n) < 0) out.push(n);
+      });
+      return out.sort((a, b) => b - a).slice(0, 8);
+    };
     parsed.termene = parsed.termene.filter(t => t && typeof t === 'object').map(t => ({
       id: t.id || uid(),
       titlu: String(t.titlu || '').slice(0, 80),
@@ -194,10 +205,12 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       subjectId: t.subjectId || null,
       nota: String(t.nota || '').slice(0, 120),
       gata: !!t.gata,
-      // cu câte zile înainte să sune („” = deloc) și în ce zi s-a anunțat deja,
-      // ca să nu te bată la cap de fiecare dată când deschizi aplicația
-      aminteste: /^\d+$/.test(String(t.aminteste || '')) ? String(t.aminteste) : '',
-      anuntat: /^\d{4}-\d{2}-\d{2}$/.test(t.anuntat || '') ? t.anuntat : '',
+      // Cu câte zile înainte să sune — pot fi mai multe — și care dintre ele
+      // au sunat deja, ca să nu te bată la cap la fiecare pornire.
+      // Prima variantă ținea o singură amintire, ca text; o aducem la listă.
+      aminteste: curataAmintiri(t.aminteste),
+      anuntate: (Array.isArray(t.anuntate) ? t.anuntate : [])
+        .map(Number).filter(n => n >= 0 && n <= 400).slice(0, 8),
       // de unde a venit (ex. „moodle:<uid>”): la o nouă aducere din Moodle,
       // termenul se înnoiește în loc să se adauge a doua oară
       sursa: String(t.sursa || '').slice(0, 200)
@@ -3602,10 +3615,14 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       '<button type="button" class="termen__corp">' +
         '<span class="termen__titlu"></span>' +
         '<span class="termen__meta"><span class="tip-pill">' + escapeHtml(eticheta) + '</span>' +
-        (cateZileInainte(t) !== null
+        (zileleAmintirii(t).length
           ? '<span class="termen__clopot" title="Te anunț ' +
-            escapeHtml((AMINTIRI.filter(a => a[0] === t.aminteste)[0] || ['', ''])[1].toLowerCase()) +
-            '"><svg class="ic"><use href="#i-alarm"></use></svg></span>'
+            escapeHtml(zileleAmintirii(t).slice().sort((a, b) => b - a)
+              .map(numeAmintire).join(', ')) +
+            '"><svg class="ic"><use href="#i-alarm"></use></svg>' +
+            (zileleAmintirii(t).length > 1
+              ? '<em>' + zileleAmintirii(t).length + '</em>' : '') +
+            '</span>'
           : '') +
         (detalii.length ? '<span>' + detalii.join(' · ') + '</span>' : '') + '</span>' +
       '</button>' +
@@ -3670,34 +3687,43 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
      termenelor în calendarul telefonului, care sună singur, mereu.
      ---------------------------------------------------------- */
   const AMINTIRI = [
-    ['', 'Nu-mi aminti'],
-    ['0', 'În ziua respectivă'],
-    ['1', 'Cu o zi înainte'],
-    ['3', 'Cu 3 zile înainte'],
-    ['7', 'Cu o săptămână înainte']
+    [0, 'În ziua respectivă', 'în ziua respectivă'],
+    [1, 'Cu o zi înainte', 'cu o zi înainte'],
+    [3, 'Cu 3 zile înainte', 'cu 3 zile înainte'],
+    [7, 'Cu o săptămână înainte', 'cu o săptămână înainte']
   ];
-  const AMINTIRE_IMPLICITA = '1';
+  const AMINTIRE_IMPLICITA = [1];
 
   const areNotificari = () => typeof Notification !== 'undefined';
   const notificariPornite = () => areNotificari() && Notification.permission === 'granted';
 
-  /** Câte zile înainte de termen trebuie să sune, sau null dacă nu vrea. */
-  function cateZileInainte(t) {
-    const v = (t && t.aminteste) || '';
-    return /^\d+$/.test(v) ? +v : null;
+  /** Cu câte zile înainte să sune — pot fi mai multe, de la cea mai devreme. */
+  function zileleAmintirii(t) {
+    return Array.isArray(t && t.aminteste) ? t.aminteste : [];
   }
 
-  /** Termenele care trebuie anunțate acum și încă n-au fost. */
+  const numeAmintire = z => (AMINTIRI.filter(a => a[0] === z)[0] || [z, '', z + ' zile'])[2];
+
+  /**
+   * Ce trebuie anunțat acum: perechi termen–amintire. Fiecare amintire aleasă
+   * sună o singură dată, nu în fiecare zi până la termen, și nu o stinge pe
+   * următoarea — de-aia ținem minte care dintre ele au sunat deja.
+   */
   function amintiriDeSpus() {
-    const azi = caData(new Date());
-    return termene().filter(t => {
-      if (t.gata) return false;
-      const inainte = cateZileInainte(t);
-      if (inainte === null) return false;
+    const deSpus = [];
+    termene().forEach(t => {
+      if (t.gata) return;
       const z = zileRamase(t.data);
-      if (z === null || z < 0 || z > inainte) return false;
-      return t.anuntat !== azi;                 // o singură dată pe zi, nu la fiecare pornire
+      if (z === null || z < 0) return;
+      const spuse = Array.isArray(t.anuntate) ? t.anuntate : [];
+      zileleAmintirii(t)
+        .slice()
+        .sort((a, b) => a - b)                 // cea mai apropiată întâi
+        .forEach(zi => {
+          if (z <= zi && spuse.indexOf(zi) < 0) deSpus.push({ termen: t, zi: zi });
+        });
     });
+    return deSpus;
   }
 
   async function cerePermisiuneAnunturi() {
@@ -3742,15 +3768,17 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       if (navigator.serviceWorker) reg = await navigator.serviceWorker.getRegistration();
     } catch (e) { /* fără service worker: mergem pe notificarea simplă */ }
 
-    const azi = caData(new Date());
-    for (const t of deSpus) {
+    for (const pereche of deSpus) {
+      const t = pereche.termen;
       const z = zileRamase(t.data);
       const s = t.subjectId ? db.subjects.find(x => x.id === t.subjectId) : null;
       const corp = (s ? s.name + ' · ' : '') + textZile(z) +
                    (t.nota ? ' · ' + t.nota : '');
       const optiuni = {
         body: corp,
-        tag: 'termen-' + t.id,
+        // eticheta poartă și amintirea: două amintiri diferite nu trebuie să
+        // se înlocuiască una pe alta în bara telefonului
+        tag: 'termen-' + t.id + '-' + pereche.zi,
         icon: './icons/icon-192.png',
         badge: './icons/icon-192.png',
         requireInteraction: z <= 0
@@ -3758,7 +3786,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       try {
         if (reg && reg.showNotification) await reg.showNotification(t.titlu, optiuni);
         else new Notification(t.titlu, optiuni);
-        t.anuntat = azi;
+        if (!Array.isArray(t.anuntate)) t.anuntate = [];
+        t.anuntate.push(pereche.zi);
       } catch (e) { /* notificarea n-a putut fi arătată; reîncercăm data viitoare */ }
     }
     persist();
@@ -3767,7 +3796,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   function randeazaBaraAnunturi() {
     const bara = $('#termeneAnuntBara'), text = $('#termeneAnuntText');
     if (!bara || !text) return;
-    const cuAmintire = termene().filter(t => !t.gata && cateZileInainte(t) !== null).length;
+    const cuAmintire = termene().filter(t => !t.gata && zileleAmintirii(t).length).length;
     if (!cuAmintire || notificariPornite()) { bara.hidden = true; return; }
     bara.hidden = false;
     if (!areNotificari() || Notification.permission === 'denied') {
@@ -3813,15 +3842,15 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         t.titlu + (s ? ' (' + s.name + ')' : ''))));
       if (t.nota) out.push(impaturesteICal('DESCRIPTION:' + scapaICal(t.nota)));
 
-      const inainte = cateZileInainte(t);
-      if (inainte !== null) {
+      // câte o alarmă pentru fiecare amintire aleasă
+      zileleAmintirii(t).slice().sort((a, b) => b - a).forEach(inainte => {
         out.push('BEGIN:VALARM');
         out.push('ACTION:DISPLAY');
         out.push(impaturesteICal('DESCRIPTION:' + scapaICal(t.titlu)));
         // ora 9 dimineața cu atâtea zile înainte: -P1D ar suna la miezul nopții
         out.push('TRIGGER:' + (inainte === 0 ? '-PT15H' : '-P' + inainte + 'DT15H'));
         out.push('END:VALARM');
-      }
+      });
       out.push('END:VEVENT');
     });
     out.push('END:VCALENDAR');
@@ -3832,7 +3861,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     const lista = termene().filter(t => !t.gata && zileRamase(t.data) !== null &&
                                         zileRamase(t.data) >= -1);
     if (!lista.length) { toast('N-ai niciun termen de pus în calendar.', 'err'); return; }
-    const cuAlarma = lista.filter(t => cateZileInainte(t) !== null).length;
+    const cuAlarma = lista.filter(t => zileleAmintirii(t).length).length;
     saveAs('termene-uninotes.ics', calendarDinTermene(lista), 'text/calendar',
       lista.length + (lista.length === 1 ? ' termen pus în fișier' : ' termene puse în fișier') +
       (cuAlarma ? ', ' + cuAlarma + ' cu alarmă' : '') +
@@ -3863,25 +3892,52 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       [['', '— fără materie —']].concat(db.subjects.map(s => [s.id, s.name])),
       t ? (t.subjectId || '') : '');
     $('#termenNota').value = t ? (t.nota || '') : '';
-    umpleSelect($('#termenAminteste'), AMINTIRI,
-      t ? (t.aminteste || '') : AMINTIRE_IMPLICITA);
-    randeazaAjutorulAmintirii();
+    amintiriAlese = t ? zileleAmintirii(t).slice() : AMINTIRE_IMPLICITA.slice();
+    randeazaAlegereaAmintirii();
     $('#termenDelete').hidden = !t;
     $('#termenModal').showModal();
+  }
+
+  /* Ce e bifat acum în fereastra de termen. Se poate alege mai mult de una. */
+  let amintiriAlese = [];
+
+  function randeazaAlegereaAmintirii() {
+    const gazda = $('#termenAminteste');
+    if (!gazda) return;
+    gazda.innerHTML = '';
+    AMINTIRI.forEach(a => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      const ales = amintiriAlese.indexOf(a[0]) >= 0;
+      b.className = 'optiune' + (ales ? ' is-active' : '');
+      b.setAttribute('aria-pressed', String(ales));
+      b.textContent = a[1];
+      b.addEventListener('click', () => {
+        const i = amintiriAlese.indexOf(a[0]);
+        if (i >= 0) amintiriAlese.splice(i, 1);
+        else amintiriAlese.push(a[0]);
+        randeazaAlegereaAmintirii();
+      });
+      gazda.appendChild(b);
+    });
+    randeazaAjutorulAmintirii();
   }
 
   /** Sub alegere scriem ce se va întâmpla de fapt, în starea de acum. */
   function randeazaAjutorulAmintirii() {
     const el = $('#termenAmintesteAjutor');
     if (!el) return;
-    if (!$('#termenAminteste').value) { el.textContent = ''; return; }
-    if (notificariPornite()) {
-      el.textContent = 'Te anunț când deschizi aplicația în ziua aceea. Ca telefonul să ' +
-                       'sune și cu aplicația închisă, pune termenele în calendarul lui — ' +
-                       'butonul cu calendarul, sus în Termene.';
-    } else {
-      el.textContent = 'Va trebui să-mi dai voie să trimit notificări. Te întreb la salvare.';
+    if (!amintiriAlese.length) {
+      el.textContent = 'Nu te anunț la acest termen.';
+      return;
     }
+    const cand = amintiriAlese.slice().sort((a, b) => b - a).map(numeAmintire).join(', ');
+    el.textContent = notificariPornite()
+      ? 'Te anunț ' + cand + ', când deschizi aplicația. Ca telefonul să sune și cu ' +
+        'aplicația închisă, pune termenele în calendarul lui — butonul cu calendarul, ' +
+        'sus în Termene.'
+      : 'Te anunț ' + cand + '. Va trebui să-mi dai voie să trimit notificări; ' +
+        'te întreb la salvare.';
   }
 
   /* ==========================================================
@@ -4224,7 +4280,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         termene().push({
           id: uid(), titlu: t.nume, data: t.termen, tip: 'predare',
           subjectId: sid, nota: 'Din Moodle · ' + c.nume, gata: false, sursa: sursa,
-          aminteste: AMINTIRE_IMPLICITA, anuntat: ''
+          aminteste: AMINTIRE_IMPLICITA.slice(), anuntate: []
         });
         temeNoi++;
       });
@@ -4387,8 +4443,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         nota: e.curs ? 'Din Moodle · ' + e.curs : 'Din Moodle',
         gata: false,
         sursa: r.sursa,
-        aminteste: AMINTIRE_IMPLICITA,
-        anuntat: ''
+        aminteste: AMINTIRE_IMPLICITA.slice(),
+        anuntate: []
       });
       noi++;
     });
@@ -5466,7 +5522,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       const titlu = $('#termenTitlu').value.trim();
       const data = $('#termenData').value;
       if (!titlu || !data) { e.preventDefault(); return; }
-      const aminteste = $('#termenAminteste').value;
+      const aminteste = amintiriAlese.slice().sort((a, b) => b - a);
       const camp = {
         titlu: titlu, data: data, tip: $('#termenTip').value,
         subjectId: $('#termenMaterie').value || null,
@@ -5474,19 +5530,21 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         aminteste: aminteste
       };
       if (termenEditat) {
-        // dacă s-a mutat data sau amintirea, anunțul de azi nu mai e valabil
-        if (termenEditat.data !== data || termenEditat.aminteste !== aminteste) {
-          camp.anuntat = '';
+        // dacă s-a mutat data sau s-au schimbat amintirile, ce s-a anunțat
+        // până acum nu mai are legătură cu ce se va anunța de aici înainte
+        if (termenEditat.data !== data ||
+            String(zileleAmintirii(termenEditat)) !== String(aminteste)) {
+          camp.anuntate = [];
         }
         Object.assign(termenEditat, camp);
         toast('Termen actualizat', 'ok');
       } else {
-        termene().push(Object.assign({ id: uid(), gata: false, anuntat: '' }, camp));
+        termene().push(Object.assign({ id: uid(), gata: false, anuntate: [] }, camp));
         toast('Termen adăugat', 'ok');
       }
       termenEditat = null;
       salveazaTermene();
-      if (aminteste && !notificariPornite()) cerePermisiuneAnunturi();
+      if (aminteste.length && !notificariPornite()) cerePermisiuneAnunturi();
       else spuneAmintirile();
     });
 

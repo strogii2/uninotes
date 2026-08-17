@@ -665,10 +665,10 @@ window.addEventListener('unhandledrejection', function (e) {
       <span>Detalii <em>(opțional)</em></span>
       <input id="termenNota" maxlength="120" placeholder="ex. de predat pe platformă, până la 23:59">
     </label>
-    <label class="field">
-      <span>Amintește-mi</span>
-      <select id="termenAminteste"></select>
-    </label>
+    <div class="field">
+      <span>Amintește-mi <em>(poți alege mai multe)</em></span>
+      <div class="alege" id="termenAminteste" role="group" aria-label="Când să te anunț"></div>
+    </div>
     <p class="field-ajutor" id="termenAmintesteAjutor"></p>
     <div class="modal__actions">
       <button type="button" class="btn btn--danger-ghost" id="termenDelete" hidden>Șterge</button>
