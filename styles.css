@@ -292,7 +292,12 @@ h1,h2,h3,p{margin:0}
   border-right:1px solid var(--border);
   overflow:hidden;
 }
-.list-head{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-4) var(--sp-4) var(--sp-2)}
+/* Butonul de meniu are slot propriu, care nu se strânge: căutarea de lângă el
+   crește cât vrea, iar butonul rămâne în același punct. Marginea din stânga e
+   aceeași cu a listei de dedesubt, ca totul din coloana asta să pornească de
+   pe aceeași linie. */
+.list-head{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-4) var(--sp-3) var(--sp-2)}
+.list-head #menuBtn{flex:none}
 .search{position:relative;flex:1;display:flex;align-items:center}
 .search__icon{position:absolute;left:12px;width:17px;height:17px;color:var(--fg-muted);pointer-events:none}
 .search input{
@@ -311,7 +316,7 @@ h1,h2,h3,p{margin:0}
 }
 .search input:focus ~ .search__kbd{opacity:0}
 
-.list-sub{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-4) var(--sp-3)}
+.list-sub{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3) var(--sp-3)}
 .list-title{font-size:15px;font-weight:700;letter-spacing:-.02em;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sort select{
   border:0;background:transparent;color:var(--fg-muted);font-size:12.5px;font-weight:600;
@@ -822,12 +827,22 @@ body{-webkit-tap-highlight-color:transparent}
 @media (max-width:860px){
   .app{grid-template-columns:1fr}
   .only-mobile{display:grid}
+  /* Meniul stă pe loc: apare și dispare, nu vine alunecând din stânga.
+     Alunecarea muta tot ce e în el dintr-o parte în alta, iar ochiul trebuie
+     să alerge după rânduri în loc să le citească. Rămâne doar stingerea, ca
+     schimbarea să nu fie bruscă, plus o urcare de câțiva pixeli. */
   .sidebar{
     position:fixed;inset:0 auto 0 0;width:min(292px,86vw);z-index:50;
-    transform:translateX(-102%);transition:transform var(--t-slow) var(--ease);
     box-shadow:var(--sh-3);
+    opacity:0;visibility:hidden;transform:translateY(6px);
+    transition:opacity var(--t) var(--ease),transform var(--t) var(--ease),
+               visibility 0s linear var(--t);
   }
-  .app.nav-open .sidebar{transform:none}
+  .app.nav-open .sidebar{
+    opacity:1;visibility:visible;transform:none;
+    transition:opacity var(--t) var(--ease),transform var(--t) var(--ease),
+               visibility 0s;
+  }
   .brand .sidebar__close{display:grid}
   .list-pane,.editor-pane{grid-column:1;grid-row:1;border-right:0}
   .app[data-pane="list"] .editor-pane{display:none}
@@ -867,9 +882,13 @@ body{-webkit-tap-highlight-color:transparent}
 }
 
 @media (max-width:420px){
-  .list-head{padding:var(--sp-3) var(--sp-3) var(--sp-2)}
-  .list-sub{padding-inline:var(--sp-3)}
+  /* Aceeași margine pentru tot ce stă în coloana asta: butonul de meniu,
+     titlul, notițele și ecranul „Azi” pornesc de pe aceeași linie. Altfel
+     butonul pare mutat față de ce e sub el. */
+  .list-head{padding:var(--sp-3) var(--sp-2) var(--sp-2)}
+  .list-sub{padding-inline:var(--sp-2)}
   .notes{padding-inline:var(--sp-2)}
+  .azi{padding-inline:var(--sp-2)}
   .search__kbd{display:none}
 }
 
@@ -1205,6 +1224,23 @@ button.azi-rand:hover{background:var(--muted)}
 .azi-rand.e-azi .azi-rand__dreapta{color:var(--primary);font-weight:700}
 .nav__item--azi .ic{color:var(--primary)}
 
+/* pași numerotați: întâi ce ai de făcut, explicațiile abia dedesubt */
+.pasi{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--sp-4)}
+.pas{display:flex;gap:var(--sp-3);align-items:flex-start}
+.pas__nr{
+  flex:none;width:26px;height:26px;border-radius:var(--r-full);
+  display:grid;place-items:center;font-size:13px;font-weight:700;
+  background:color-mix(in srgb,var(--primary) 15%,transparent);color:var(--primary);
+}
+.pas__corp{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--sp-2);align-items:flex-start}
+.pas__corp strong{font-size:14.5px}
+.pas__corp small{font-size:12.5px;line-height:1.55;color:var(--fg-muted)}
+.pas__corp input{
+  width:100%;padding:10px var(--sp-3);min-height:42px;
+  background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);
+  font-size:14px;
+}
+
 /* o bifă cu explicație dedesubt, pentru alegeri care merită lămurite */
 .bifa{
   display:flex;align-items:flex-start;gap:var(--sp-3);cursor:pointer;
@@ -1248,6 +1284,24 @@ button.azi-rand:hover{background:var(--muted)}
 }
 .anunt-bara .ic{flex:none;color:var(--primary)}
 .anunt-bara span:not(.spacer){min-width:0}
+.toate-amintirile{
+  max-width:760px;margin:0 auto var(--sp-3);
+  display:flex;flex-direction:column;gap:var(--sp-2);
+  padding:var(--sp-3) var(--sp-4);
+  border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);
+}
+.toate-amintirile__cap{
+  font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--fg-muted);
+}
+/* pusă doar la unele: nici aprinsă, nici stinsă — se vede că e pe jumătate */
+.optiune.e-partial{
+  border-style:dashed;
+  border-color:color-mix(in srgb,var(--primary) 45%,transparent);
+  color:var(--primary);
+}
+.optiune:disabled{opacity:.45;pointer-events:none}
+
 .termen__clopot{display:inline-flex;align-items:center;gap:2px;color:var(--fg-muted)}
 .termen__clopot .ic{width:14px;height:14px}
 .termen__clopot em{font-style:normal;font-size:11px;font-weight:700}

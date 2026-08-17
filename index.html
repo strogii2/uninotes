@@ -497,6 +497,14 @@ window.addEventListener('unhandledrejection', function (e) {
     </header>
     <div class="orar__body">
       <!-- rândul ăsta apare doar cât timp notificările nu sunt pornite -->
+      <!-- amintirile pentru toate termenele deodată, ca să nu le pui una câte una -->
+      <div class="toate-amintirile">
+        <span class="toate-amintirile__cap">Amintește-mi la toate termenele</span>
+        <div class="alege" id="toateAmintirile" role="group"
+             aria-label="Când să te anunț la toate termenele"></div>
+        <p class="field-ajutor" id="toateAmintirileAjutor"></p>
+      </div>
+
       <div class="anunt-bara" id="termeneAnuntBara" hidden>
         <svg class="ic"><use href="#i-alarm"></use></svg>
         <span id="termeneAnuntText"></span>
@@ -815,46 +823,78 @@ window.addEventListener('unhandledrejection', function (e) {
 
 <dialog class="modal" id="syncModal">
   <div class="modal__body">
-    <h2 class="modal__title">Sincronizare între dispozitive</h2>
-    <p class="modal__text">Notițele se duc într-un <strong>gist secret</strong> din contul tău
-      de GitHub — gratuit. Pui același jeton pe telefon și pe calculator, apoi trimiți de pe
-      unul și aduci pe celălalt.</p>
-    <p class="modal__text modal__text--mic"><strong>De știut:</strong> „secret" la GitHub
-      înseamnă nelistat și negăsibil prin căutare, dar <em>nu</em> protejat prin parolă —
-      cine are adresa gistului îl poate deschide. Pentru notițe de facultate e în regulă;
-      nu pune acolo lucruri pe care nu ți-ai permite să le pierzi din vedere.</p>
-    <p class="modal__text modal__text--mic">Ai nevoie de un jeton cu drept pe „gist":
-      <a href="https://github.com/settings/tokens/new?scopes=gist&description=UniNotes"
-         target="_blank" rel="noopener">creează-l aici</a>. Jetonul rămâne doar pe dispozitiv,
-      separat de notițe.</p>
+    <h2 class="modal__title">Aceleași notițe pe telefon și pe calculator</h2>
 
-    <label class="field">
-      <span>Jeton GitHub</span>
-      <input id="syncToken" type="password" placeholder="ghp_… sau github_pat_…" autocomplete="off" spellcheck="false">
-    </label>
-    <label class="field">
-      <span>Identificatorul gistului <em>(se completează singur la prima trimitere)</em></span>
-      <input id="syncGist" placeholder="—" autocomplete="off" spellcheck="false">
-    </label>
-
-    <label class="bifa">
-      <input type="checkbox" id="syncAuto">
-      <span>
-        <strong>Sincronizează singură</strong>
-        <small>Aduce la pornire și trimite după ce termini de scris. Nu înlocuiește
-          niciodată singură ceva ce ai scris aici: dacă s-a scris în amândouă
-          părțile, te întreabă. Înainte de orice înlocuire pune starea de acum
-          deoparte, în Copii.</small>
-      </span>
-    </label>
+    <!-- Doi pași, în ordine. Restul — gistul, trimite/adu, ce vede altcineva —
+         stă strâns mai jos: nu-ți trebuie ca să pornești. -->
+    <ol class="pasi">
+      <li class="pas">
+        <span class="pas__nr">1</span>
+        <div class="pas__corp">
+          <strong>Ia o cheie de la GitHub</strong>
+          <small>Se deschide o pagină gata completată. Apeși „Generate token" și copiezi
+            șirul care apare. E gratuit și durează un minut.</small>
+          <a class="btn btn--sm" id="syncIaCheia"
+             href="https://github.com/settings/tokens/new?scopes=gist&description=UniNotes"
+             target="_blank" rel="noopener">
+            <svg class="ic"><use href="#i-key"></use></svg>
+            <span>Deschide pagina</span>
+          </a>
+        </div>
+      </li>
+      <li class="pas">
+        <span class="pas__nr">2</span>
+        <div class="pas__corp">
+          <strong>Lipește cheia aici</strong>
+          <input id="syncToken" type="password" placeholder="ghp_… sau github_pat_…"
+                 autocomplete="off" spellcheck="false">
+          <button type="button" class="btn btn--primary" id="syncLeaga">
+            <svg class="ic"><use href="#i-check"></use></svg>
+            <span>Gata, leagă-le</span>
+          </button>
+          <small>Atât. De aici încolo se sincronizează singură: aduce la pornire și
+            trimite după ce termini de scris. Pe celălalt dispozitiv lipești aceeași
+            cheie și același identificator, de mai jos.</small>
+        </div>
+      </li>
+    </ol>
 
     <p class="modal__text modal__text--mic" id="syncStare"></p>
 
+    <details class="moodle__pliant">
+      <summary>Mai multe: identificator, trimite/adu de mână, ce vede altcineva</summary>
+
+      <label class="field">
+        <span>Identificatorul gistului <em>(se completează singur)</em></span>
+        <input id="syncGist" placeholder="—" autocomplete="off" spellcheck="false">
+      </label>
+
+      <label class="bifa">
+        <input type="checkbox" id="syncAuto">
+        <span>
+          <strong>Sincronizează singură</strong>
+          <small>Nu înlocuiește niciodată singură ceva ce ai scris aici: dacă s-a scris
+            în amândouă părțile, te întreabă. Înainte de orice înlocuire pune starea de
+            acum deoparte, în Copii.</small>
+        </span>
+      </label>
+
+      <p class="modal__text modal__text--mic">Notițele se duc într-un <strong>gist
+        secret</strong> din contul tău. „Secret" la GitHub înseamnă nelistat și
+        negăsibil prin căutare, dar <em>nu</em> protejat prin parolă — cine are adresa
+        gistului îl poate deschide. Pentru notițe de facultate e în regulă; nu pune
+        acolo lucruri pe care nu ți-ai permite să le pierzi din vedere. Cheia rămâne
+        doar pe dispozitiv, separat de notițe.</p>
+
+      <div class="modal__actions modal__actions--wrap">
+        <button type="button" class="btn btn--ghost" id="syncAdu">Adu de pe cont</button>
+        <button type="button" class="btn btn--ghost" id="syncTrimite">Trimite pe cont</button>
+      </div>
+    </details>
+
     <div class="modal__actions modal__actions--wrap">
-      <button type="button" class="btn btn--ghost" data-close>Închide</button>
       <span class="spacer"></span>
-      <button type="button" class="btn btn--ghost" id="syncAdu">Adu de pe cont</button>
-      <button type="button" class="btn btn--primary" id="syncTrimite">Trimite pe cont</button>
+      <button type="button" class="btn btn--ghost" data-close>Închide</button>
     </div>
   </div>
 </dialog>
