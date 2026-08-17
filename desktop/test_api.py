@@ -112,4 +112,50 @@ rezultate["poza_stearsa"] = api.delete_image("abc123")
 rezultate["poza_chiar_stearsa"] = api.load_image("abc123") is None
 api.delete_image("evadare")
 
+
+# ---------- copiile de siguranță ----------
+# Notițele se salvează la fiecare tastă: fără copii, o ștergere din greșeală e
+# definitivă în câteva secunde.
+# pornim de la zero copii, ca numaratoarea sa insemne ceva
+for vechi in api._copii_dir().glob("notite-*.json"):
+    vechi.unlink()
+
+api.save_data({"notes": [{"id": "n1", "title": "Prima"}], "subjects": []})
+copii = api.list_backups()
+rezultate["copie_la_prima_salvare"] = len(copii) == 1   # fisierul de dinainte, pus deoparte
+
+api.save_data({"notes": [{"id": "n1", "title": "Prima"},
+                         {"id": "n2", "title": "A doua"}], "subjects": []})
+rezultate["nu_face_copie_la_fiecare_salvare"] = len(api.list_backups()) == 1
+
+# ceruta anume, se face oricand — si nu o suprascrie pe cea din acelasi minut
+rezultate["copie_la_cerere"] = api.copie_acum()
+copii = api.list_backups()
+rezultate["doua_copii"] = len(copii) == 2
+rezultate["copia_proaspata_are_starea_de_acum"] = copii[0]["notite"] == 2
+
+# continutul se poate citi inapoi
+continut = api.read_backup(copii[0]["nume"])
+rezultate["copia_se_citeste"] = bool(continut) and "A doua" in continut
+
+# numele vine din interfata: nu trebuie sa poata iesi din folder
+rezultate["copie_fara_evadare"] = (
+    api.read_backup("../notite.json") is None
+    and api.read_backup("..\\notite.json") is None
+    and api.read_backup("altceva.json") is None
+)
+
+# nu tinem la nesfarsit: raman cele mai noi MAX_COPII
+for _ in range(app.MAX_COPII + 4):
+    api.copie_acum()
+rezultate["copiile_vechi_se_sterg"] = len(api.list_backups()) <= app.MAX_COPII
+
+# ---------- legăturile pleacă în browser, nu în fereastra aplicației ----------
+deschise = []
+app.webbrowser.open = lambda u: deschise.append(u)
+rezultate["link_http_deschis"] = api.open_link("https://example.org/curs")
+rezultate["link_ciudat_refuzat"] = not api.open_link("file:///C:/Windows/system.ini")
+rezultate["link_gol_refuzat"] = not api.open_link("")
+rezultate["doar_linkul_bun_a_plecat"] = deschise == ["https://example.org/curs"]
+
 print("REZULTAT " + json.dumps(rezultate, ensure_ascii=False))

@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 22;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 23;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -229,6 +229,10 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       userid: +parsed.moodle.userid || 0,
       ultima: text(parsed.moodle.ultima, 40),
       ultimaCont: text(parsed.moodle.ultimaCont, 40),
+      // ce s-a stricat la ultima încercare tăcută de reînnoire, dacă s-a stricat
+      problema: ['cheie', 'retea'].indexOf(parsed.moodle.problema) >= 0
+        ? parsed.moodle.problema : '',
+      problemaText: text(parsed.moodle.problemaText, 200),
       // Ce s-a adus despre fiecare materie. Tăiat scurt înadins: totul pleacă
       // și prin sincronizare, iar o listă de materiale poate fi foarte lungă.
       cursuri: listaScurta(parsed.moodle.cursuri, 30, c => ({
@@ -256,7 +260,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         materiale: listaScurta(c && c.materiale, 60, m => ({
           sectiune: text(m && m.sectiune, 60),
           nume: text(m && m.nume, 90),
-          tip: text(m && m.tip, 20)
+          tip: text(m && m.tip, 20),
+          url: /^https?:\/\//i.test((m && m.url) || '') ? text(m.url, 300) : ''
         }))
       }))
     };
@@ -2347,6 +2352,94 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
    * Copia de siguranță ia și pozele, altfel restaurarea ar da notițe cu goluri.
    * Sunt deja comprimate la inserare, deci fișierul rămâne rezonabil.
    */
+  /* ==========================================================
+     COPII DE SIGURANȚĂ
+     Notițele se salvează la fiecare tastă, deci o ștergere din greșeală devine
+     definitivă în câteva secunde. Aplicația pune deoparte, din când în când,
+     fișierul așa cum era; de aici te poți întoarce la el.
+     ========================================================== */
+  async function randeazaCopiile() {
+    const gazda = $('#copiiLista');
+    if (!gazda) return;
+    gazda.innerHTML = '';
+
+    if (!api() || !api().list_backups) {
+      const p = document.createElement('p');
+      p.className = 'list-empty';
+      p.textContent = 'Copiile automate se fac în aplicația de pe calculator, acolo unde ' +
+                      'notițele stau ca fișier. Aici, folosește butonul Backup.';
+      gazda.appendChild(p);
+      return;
+    }
+
+    let lista = [];
+    try { lista = (await api().list_backups()) || []; } catch (e) { lista = []; }
+    if (!lista.length) {
+      const p = document.createElement('p');
+      p.className = 'list-empty';
+      p.textContent = 'Încă nicio copie. Prima se face la scurt timp după ce începi să scrii.';
+      gazda.appendChild(p);
+      return;
+    }
+
+    lista.forEach(c => {
+      const rand = document.createElement('div');
+      rand.className = 'copie';
+      const corp = document.createElement('span');
+      corp.className = 'copie__corp';
+      const sus = document.createElement('strong');
+      sus.textContent = c.cand;
+      const jos = document.createElement('small');
+      jos.textContent = (c.notite === null ? 'nu s-a putut citi' :
+        c.notite + (c.notite === 1 ? ' notiță' : ' notițe') +
+        (c.materii ? ' · ' + c.materii + (c.materii === 1 ? ' materie' : ' materii') : '')) +
+        ' · ' + Math.max(1, Math.round((c.marime || 0) / 1024)) + ' KB';
+      corp.appendChild(sus);
+      corp.appendChild(jos);
+      rand.appendChild(corp);
+
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn btn--sm';
+      b.textContent = 'Întoarce-te aici';
+      b.disabled = c.notite === null;
+      b.addEventListener('click', () => intoarceLaCopie(c));
+      rand.appendChild(b);
+      gazda.appendChild(rand);
+    });
+  }
+
+  async function intoarceLaCopie(c) {
+    const ok = await confirmDialog('Te întorci la copia din ' + c.cand + '?',
+      'Notițele de acum vor fi înlocuite cu cele ' + c.notite + ' din copie. ' +
+      'Fac întâi o copie a stării de acum, ca să te poți întoarce și de aici.',
+      'Întoarce-te');
+    if (!ok) return;
+
+    try {
+      await api().copie_acum();                 // starea de acum, pusă la păstrare
+      const text = await api().read_backup(c.nume);
+      if (!text) { toast('Nu am putut citi copia.', 'err'); return; }
+      const date = JSON.parse(text);
+      if (!date || !Array.isArray(date.notes)) { toast('Copia nu e întreagă.', 'err'); return; }
+
+      db = normalize(date) || db;
+      ui.activeId = (db.notes[0] || {}).id || null;
+      persist();
+      renderSidebar(); renderList(); renderEditor();
+      $('#copiiDlg').close();
+      toast('Gata — notițele sunt cele din ' + c.cand, 'ok');
+    } catch (e) {
+      toast('Nu am putut întoarce copia: ' + (e.message || e), 'err');
+    }
+  }
+
+  async function deschideCopiile() {
+    closeNav();
+    $('#copiiDlg').showModal();
+    await randeazaCopiile();
+  }
+
   async function exportAll() {
     const folosite = pozeFolosite();
     const pack = Object.assign({}, db);
@@ -4125,6 +4218,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     m.nume = String((info && (info.fullname || info.username)) || '').slice(0, 80);
     m.siteNume = String((info && info.sitename) || '').slice(0, 80);
     m.userid = +(info && info.userid) || 0;
+    m.problema = '';                    // s-a răspuns, deci legătura e întreagă
+    m.problemaText = '';
     persist();
     return info;
   }
@@ -4234,7 +4329,9 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
               curs.materiale.push({
                 sectiune: String(sect.name || '').slice(0, 60),
                 nume: String(m.name || '').slice(0, 90),
-                tip: String(m.modname || '').slice(0, 20)
+                tip: String(m.modname || '').slice(0, 20),
+                // adresa lui în Moodle, ca să-l poți deschide de aici
+                url: /^https?:\/\//i.test(m.url || '') ? String(m.url).slice(0, 300) : ''
               });
             });
           });
@@ -4611,8 +4708,17 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   }
 
   function actualizeazaInsignaMoodle() {
-    const el = $('#cMoodle');
+    const el = $('#cMoodle'), btn = $('#moodleBtn');
     if (!el) return;
+    if (moodle().problema === 'cheie') {
+      el.textContent = '!';
+      if (btn) {
+        btn.classList.add('e-problema');
+        btn.title = 'Legătura cu Moodle s-a rupt — cheia nu mai e bună. Intră și leagă-l din nou.';
+      }
+      return;
+    }
+    if (btn) { btn.classList.remove('e-problema'); btn.title = ''; }
     const cate = termene().filter(t => t.sursa && t.sursa.indexOf('moodle:') === 0).length;
     el.textContent = cate ? String(cate) : '—';
   }
@@ -4670,9 +4776,15 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       r.className = 'mgrup__rand' + (e.rau ? ' e-rau' : '');
       const corp = document.createElement('span');
       corp.className = 'mgrup__corp';
-      const t = document.createElement('span');
-      t.className = 'mgrup__titlu';
+      // materialele au adresă în Moodle: le facem apăsabile
+      const t = document.createElement(e.url ? 'a' : 'span');
+      t.className = 'mgrup__titlu' + (e.url ? ' e-legatura' : '');
       t.textContent = e.titlu;
+      if (e.url) {
+        t.href = e.url;
+        t.target = '_blank';
+        t.rel = 'noopener noreferrer';
+      }
       corp.appendChild(t);
       if (e.jos) {
         const j = document.createElement('span');
@@ -4744,6 +4856,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     })), 'Niciun anunț.'));
     corp.appendChild(grupCurs('Materiale', (c.materiale || []).map(m => ({
       titlu: m.nume,
+      url: m.url || '',
       jos: [m.sectiune, NUME_MODUL[m.tip] || m.tip].filter(Boolean).join(' · ')
     })), 'Niciun material.'));
     det.appendChild(corp);
@@ -4795,10 +4908,17 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       stareCont('Nelegat. Pune adresa Moodle, utilizatorul și parola ta.');
       return;
     }
+    if (moodle().problema === 'cheie') {
+      stareCont('Legătura s-a rupt: ' + (moodle().problemaText ||
+        'cheia nu mai e bună') + ' Conectează-te din nou mai sus.', true);
+      return;
+    }
     const cand = moodle().ultimaCont ? new Date(moodle().ultimaCont) : null;
     stareCont((moodle().nume ? 'Legat ca ' + moodle().nume : 'Cheie salvată') +
       (moodle().siteNume ? ' · ' + moodle().siteNume : '') +
-      (cand && !isNaN(cand.getTime()) ? ' · adus pe ' + fmtFull.format(cand) : ''));
+      (cand && !isNaN(cand.getTime()) ? ' · adus pe ' + fmtFull.format(cand) : '') +
+      (moodle().problema === 'retea'
+        ? ' · ultima reînnoire n-a reușit (' + moodle().problemaText + ')' : ''));
   }
 
   /** Aduce tot și arată rezultatul; întoarce ce s-a schimbat. */
@@ -4845,7 +4965,15 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
               { label: 'Vezi termenele', fn: deschideTermene }, 8000);
       }
     } catch (e) {
-      console.info('[UniNotes] Moodle n-a răspuns la pornire:', e.message);
+      // Tăcerea era o capcană: dacă cheia expira, aplicația se oprea din
+      // actualizat și n-avea cine să-ți spună. Însemnăm ce s-a întâmplat.
+      const text = e.message || '';
+      moodle().problema = /cheia nu e bun|expirat|invalidtoken/i.test(text)
+        ? 'cheie' : 'retea';
+      moodle().problemaText = text.slice(0, 200);
+      persist();
+      renderSidebar();
+      console.info('[UniNotes] Moodle n-a răspuns la pornire:', text);
     }
   }
 
@@ -5908,6 +6036,27 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     pe('#themeBtn', 'click', () =>
       applyTheme(db.settings.theme === 'dark' ? 'light' : 'dark', true));
     pe('#exportAllBtn', 'click', exportAll);
+    pe('#copiiBtn', 'click', deschideCopiile);
+    pe('#copiiClose', 'click', () => $('#copiiDlg').close());
+    pe('#copiiClose2', 'click', () => $('#copiiDlg').close());
+    pe('#copieAcum', 'click', async () => {
+      if (!api() || !api().copie_acum) { toast('Merge doar în aplicația de pe calculator.', 'err'); return; }
+      const ok = await api().copie_acum();
+      toast(ok ? 'Copie făcută' : 'N-am putut face copia', ok ? 'ok' : 'err');
+      randeazaCopiile();
+    });
+
+    /**
+     * O legătură către afară trebuie să plece în browserul tău, nu să înlocuiască
+     * aplicația în fereastra ei — de acolo n-ai mai avea cum să te întorci.
+     */
+    document.addEventListener('click', e => {
+      const a = e.target.closest && e.target.closest('a[href^="http"]');
+      if (!a) return;
+      if (!api() || !api().open_link) return;      // în browser, lasă browserul
+      e.preventDefault();
+      api().open_link(a.href);
+    });
     pe('#importBtn', 'click', async () => {
       if (api()) {                                    // dialog nativ de deschidere
         const picked = await api().open_file();

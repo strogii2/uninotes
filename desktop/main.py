@@ -17,9 +17,11 @@ import socketserver
 import sys
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import webbrowser
 from pathlib import Path
 
 import webview
@@ -27,6 +29,8 @@ import webview
 APP_NAME = "UniNotes"
 MAX_CALENDAR = 5 * 1024 * 1024          # un calendar de facultate are sub 1 MB
 MAX_RASPUNS = 8 * 1024 * 1024           # un răspuns Moodle e de ordinul zecilor de KB
+ORE_INTRE_COPII = 6                     # cât de des se pune deoparte o copie
+MAX_COPII = 12                          # câte copii ținem (vreo trei zile în urmă)
 
 
 def asset_dir() -> Path:
@@ -130,13 +134,132 @@ class Api:
         """Scriere atomică: întâi într-un fișier temporar, apoi îl mutăm peste cel real."""
         try:
             DATA_DIR.mkdir(parents=True, exist_ok=True)
+            self._fa_copie()
             fd, tmp = tempfile.mkstemp(dir=str(DATA_DIR), suffix=".tmp")
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump(data, fh, ensure_ascii=False, indent=1)
             os.replace(tmp, DATA_FILE)
             return {"ok": True, "path": str(DATA_FILE)}
-        except Exception as exc:
+        except Exception as exc:                                  # noqa: BLE001
             return {"ok": False, "error": str(exc)}
+
+    # ---------- copii de siguranță ----------
+    # Notițele se salvează singure la fiecare tastă, deci o ștergere din greșeală
+    # devine definitivă în câteva secunde: nu mai există nicăieri versiunea de
+    # dinainte. Punem deoparte, din când în când, fișierul așa cum era.
+
+    def _copii_dir(self) -> Path:
+        d = DATA_DIR / "copii"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _copiile(self):
+        """
+        Copiile, de la cea mai nouă. Ne luăm după ora fișierului, nu după nume:
+        numele se aseamănă prea mult între ele, iar „-2” pus la coadă pentru un
+        nume ocupat sortează înaintea punctului și răstoarnă ordinea.
+        """
+        try:
+            return sorted(self._copii_dir().glob("notite-*.json"),
+                          key=lambda p: (p.stat().st_mtime, p.name), reverse=True)
+        except Exception:                                         # noqa: BLE001
+            return []
+
+    def _nume_copie(self) -> Path:
+        """
+        Un nume liber. Ceasul nu e de ajuns nici cu secunde: două copii cerute
+        una după alta ar primi același nume și a doua ar ștearge-o pe prima —
+        tocmai pe cea de dinaintea unei restaurări, când conta cel mai mult.
+        """
+        baza = "notite-" + time.strftime("%Y-%m-%d_%H-%M-%S")
+        cale = self._copii_dir() / (baza + ".json")
+        i = 2
+        while cale.exists() and i < 100:
+            cale = self._copii_dir() / (baza + "-" + str(i) + ".json")
+            i += 1
+        return cale
+
+    def _fa_copie(self):
+        """
+        O copie la fiecare ORE_INTRE_COPII, nu la fiecare salvare: altfel am
+        umple discul cu mii de fișiere aproape identice. Ținem ultimele
+        MAX_COPII — destul cât să prinzi o greșeală după câteva zile.
+        """
+        try:
+            if not DATA_FILE.exists() or DATA_FILE.stat().st_size < 2:
+                return
+            copii = self._copiile()
+            if copii:
+                varsta = time.time() - copii[0].stat().st_mtime
+                if varsta < ORE_INTRE_COPII * 3600:
+                    return
+            shutil.copyfile(DATA_FILE, self._nume_copie())
+            for veche in self._copiile()[MAX_COPII:]:
+                try:
+                    veche.unlink()
+                except Exception:                                 # noqa: BLE001
+                    pass
+        except Exception:                                         # noqa: BLE001
+            pass                                                  # o copie ratată nu oprește salvarea
+
+    def list_backups(self):
+        """Copiile de pe disc, de la cea mai nouă, cu câte notițe are fiecare."""
+        out = []
+        for p in self._copiile():
+            rand = {"nume": p.name, "marime": p.stat().st_size,
+                    "cand": time.strftime("%Y-%m-%d %H:%M", time.localtime(p.stat().st_mtime)),
+                    "notite": None, "materii": None}
+            try:
+                d = json.loads(p.read_text(encoding="utf-8"))
+                rand["notite"] = len(d.get("notes") or [])
+                rand["materii"] = len(d.get("subjects") or [])
+            except Exception:                                     # noqa: BLE001
+                pass
+            out.append(rand)
+        return out
+
+    def read_backup(self, nume):
+        """Conținutul unei copii. Numele e verificat, ca să nu iasă din folder."""
+        nume = str(nume or "")
+        if not re.fullmatch(r"notite-[0-9_\-]{1,40}\.json", nume):
+            return None
+        p = self._copii_dir() / nume
+        try:
+            if p.parent.resolve() != self._copii_dir().resolve() or not p.exists():
+                return None
+            return p.read_text(encoding="utf-8")
+        except Exception:                                         # noqa: BLE001
+            return None
+
+    def copie_acum(self):
+        """Copie cerută anume, fără să aștepte trecerea orelor (înainte de a restaura)."""
+        try:
+            if not DATA_FILE.exists():
+                return False
+            shutil.copyfile(DATA_FILE, self._nume_copie())
+            for veche in self._copiile()[MAX_COPII:]:
+                try:
+                    veche.unlink()
+                except Exception:                                 # noqa: BLE001
+                    pass
+            return True
+        except Exception:                                         # noqa: BLE001
+            return False
+
+    def open_link(self, url):
+        """
+        Deschide o legătură în browserul tău, nu în fereastra aplicației.
+        Fără asta, o apăsare pe un material din Moodle ar înlocui aplicația cu
+        pagina aceea și n-ai mai avea cum să te întorci.
+        """
+        url = str(url or "").strip()
+        if not url.lower().startswith(("http://", "https://")):
+            return False
+        try:
+            webbrowser.open(url)
+            return True
+        except Exception:                                         # noqa: BLE001
+            return False
 
     # ---------- poze din notițe ----------
     # Stau ca fișiere lângă notite.json, nu într-o bază de date a browserului:
