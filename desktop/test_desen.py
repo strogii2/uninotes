@@ -59,6 +59,11 @@ BLOC = r"""
     return el.className || el.tagName;
   });
   out.panza_primeste_atingerea = out.cine_primeste.every(function (x) { return x === 'panza'; });
+
+  // cursorul trebuie sa fie creion, nu cruce, si radiera cand stergi
+  var cur = getComputedStyle(c).cursor;
+  out.cursor_e_desen = cur.indexOf('svg') >= 0 || cur.indexOf('data:image') >= 0;
+  out.cursor_radiera = c.classList.contains('e-radiera');
   return JSON.stringify(out);
 })()
 """
@@ -198,6 +203,16 @@ def probe(window):
         out["urma_radiera"] = citeste(
             window.evaluate_js("(" + URMA + ")('radiera', 0.22)"))
         time.sleep(0.4)
+        out["cu_radiera_in_mana"] = citeste(window.evaluate_js(BLOC))
+
+        # inapoi pe pix: cursorul trebuie sa redevina creion
+        window.evaluate_js("""
+            var b = document.querySelector('.desen-pensula[data-pensula="pix"]');
+            if (b) b.click();
+            'ok'
+        """)
+        time.sleep(0.5)
+        out["cu_creionul_in_mana"] = citeste(window.evaluate_js(BLOC))
 
         out["cu_desen_pe_panza"] = citeste(window.evaluate_js(CAT_E_DESENAT))
 

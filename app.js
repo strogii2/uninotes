@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 27;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 28;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -347,16 +347,11 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
 
   /* ceasul din bara de jos a editorului — ziua și ora, în timp real */
   let ceasTimer = null;
+  /** Un singur ceas în aplicație: cel din titlul ecranului „Azi”. */
   function porneșteCeasul() {
-    const el = $('#clockText');
-    if (!el) return;
     const bate = () => {
-      const d = new Date();
-      el.textContent = cuMajuscula(fmtZi.format(d)) + ' · ' + fmtCeas.format(d);
-      // titlul ecranului „Azi” bate din același ceas: două cronometre pentru
-      // aceeași secundă s-ar desincroniza, iar cifrele ar sări una după alta
       const t = $('#aziCeas');
-      if (t) t.textContent = fmtCeas.format(d);
+      if (t) t.textContent = fmtCeas.format(new Date());
     };
     bate();
     clearInterval(ceasTimer);
@@ -735,6 +730,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     });
     const camp = $('input[type="color"]', desen.bara);
     if (camp && unelteDesen.pensula !== 'radiera') camp.value = unelteDesen.culoare;
+    // cursorul spune ce ai în mână: creion sau radieră
+    if (desen.canvas) desen.canvas.classList.toggle('e-radiera', unelteDesen.pensula === 'radiera');
     actualizeazaBulina();
   }
 
@@ -2538,20 +2535,11 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     switch (kind) {
       case 'b': wrap('**', '**', 'text îngroșat'); break;
       case 'i': wrap('*', '*', 'text înclinat'); break;
-      case 'code': sel.includes('\n') ? wrap('```\n', '\n```', 'cod') : wrap('`', '`', 'cod'); break;
       case 'link': wrap('[', '](https://)', 'text link'); break;
       case 'h': linePrefix(l => l.startsWith('#') ? l.replace(/^#+\s*/, '') : '## ' + l); break;
       case 'ul': linePrefix(l => '- ' + l.replace(/^\s*([-*+]|\d+[.)])\s*(\[[ xX]\]\s*)?/, '')); break;
       case 'todo': linePrefix(l => '- [ ] ' + l.replace(/^[-*+]\s*(\[[ xX]\]\s*)?/, '')); break;
       case 'quote': linePrefix(l => '> ' + l.replace(/^>\s*/, '')); break;
-      case 'datetime': {
-        const acum = new Date();
-        const text = cuMajuscula(fmtZi.format(acum)) + ', ora ' + fmtTime.format(acum);
-        ta.value = val.slice(0, start) + text + val.slice(end);
-        const dupa = start + text.length;
-        ta.setSelectionRange(dupa, dupa);
-        break;
-      }
     }
     ta.focus();
     creste(ta);
