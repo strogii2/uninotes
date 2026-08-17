@@ -15,11 +15,14 @@ import socketserver
 import sys
 import tempfile
 import threading
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import webview
 
 APP_NAME = "UniNotes"
+MAX_CALENDAR = 5 * 1024 * 1024          # un calendar de facultate are sub 1 MB
 
 
 def asset_dir() -> Path:
@@ -224,6 +227,37 @@ class Api:
             return {"name": os.path.basename(path), "content": Path(path).read_text(encoding="utf-8")}
         except Exception:
             return None
+
+    # ---------- calendarul de la facultate ----------
+    def fetch_calendar(self, url):
+        """
+        Aduce un calendar (.ics) de pe internet — de la Moodle, de obicei.
+        Pagina n-o poate face singură: browserul refuză citirea de pe alt site
+        decât cel al aplicației, iar Moodle-ul facultății nu dă voie nimănui.
+
+        Puntea rămâne îngustă înadins: numai http/https și numai dacă răspunsul
+        chiar e un calendar. Nu e un cititor de internet de uz general.
+        """
+        url = str(url or "").strip()
+        if not url.lower().startswith(("http://", "https://")):
+            return {"ok": False, "eroare": "Adresa trebuie să înceapă cu http:// sau https://"}
+        try:
+            cerere = urllib.request.Request(url, headers={"User-Agent": "UniNotes"})
+            with urllib.request.urlopen(cerere, timeout=25) as r:
+                brut = r.read(MAX_CALENDAR + 1)
+        except urllib.error.HTTPError as e:
+            return {"ok": False, "eroare": "Serverul a răspuns cu eroarea %s." % e.code}
+        except Exception as e:                                    # noqa: BLE001
+            return {"ok": False, "eroare": "Nu am putut ajunge la adresă: %s" % e}
+
+        if len(brut) > MAX_CALENDAR:
+            return {"ok": False, "eroare": "Calendarul e prea mare (peste 5 MB)."}
+        text = brut.decode("utf-8", errors="replace").lstrip("﻿")
+        if "BEGIN:VCALENDAR" not in text[:2000]:
+            return {"ok": False,
+                    "eroare": "Adresa nu întoarce un calendar. Verifică dacă e "
+                              "chiar legătura de export din Moodle."}
+        return {"ok": True, "text": text}
 
     # ---------- diverse ----------
     def data_folder(self):

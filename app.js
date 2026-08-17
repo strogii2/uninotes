@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 15;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 16;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -193,8 +193,18 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       tip: ['examen', 'partial', 'colocviu', 'predare', 'test'].indexOf(t.tip) >= 0 ? t.tip : '',
       subjectId: t.subjectId || null,
       nota: String(t.nota || '').slice(0, 120),
-      gata: !!t.gata
+      gata: !!t.gata,
+      // de unde a venit (ex. „moodle:<uid>”): la o nouă aducere din Moodle,
+      // termenul se înnoiește în loc să se adauge a doua oară
+      sursa: String(t.sursa || '').slice(0, 200)
     })).filter(t => t.titlu && t.data);
+
+    // legătura cu Moodle a apărut ultima
+    if (!parsed.moodle || typeof parsed.moodle !== 'object') parsed.moodle = {};
+    parsed.moodle = {
+      url: String(parsed.moodle.url || '').slice(0, 500),
+      ultima: String(parsed.moodle.ultima || '').slice(0, 40)
+    };
 
     // starea repetițiilor: amprentă → { pas, urmator }
     if (!parsed.repetitii || typeof parsed.repetitii !== 'object') parsed.repetitii = {};
@@ -1502,6 +1512,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     actualizeazaInsigna();
     actualizeazaInsignaTermene();
     actualizeazaInsignaRepetitie();
+    actualizeazaInsignaMoodle();
 
     const wrap = $('#subjectList');
     wrap.innerHTML = '';
@@ -2411,7 +2422,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         // ca importul unei copii vechi să nu șteargă orele pe tăcute
         orar: (data.orar && Array.isArray(data.orar.entries)) ? data.orar : orar(),
         termene: Array.isArray(data.termene) ? data.termene : termene(),
-        repetitii: (data.repetitii && typeof data.repetitii === 'object') ? data.repetitii : repetitii()
+        repetitii: (data.repetitii && typeof data.repetitii === 'object') ? data.repetitii : repetitii(),
+        moodle: (data.moodle && typeof data.moodle === 'object') ? data.moodle : moodle()
       };
       normalize(db);
 
@@ -3630,6 +3642,370 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   }
 
   /* ==========================================================
+     MOODLE
+     Moodle publică toate termenele într-un calendar (.ics), iar fiecare
+     eveniment spune și de la ce curs vine. De acolo ies deodată și materiile,
+     și termenele — fără să citim paginile Moodle, care arată altfel de la o
+     facultate la alta și se schimbă de la un an la altul.
+     ========================================================== */
+  function moodle() {
+    if (!db.moodle || typeof db.moodle !== 'object') db.moodle = { url: '', ultima: '' };
+    return db.moodle;
+  }
+
+  /**
+   * Un rând de calendar se poate continua pe rândul următor, dacă acela începe
+   * cu spațiu. Le lipim la loc înainte de orice altceva, altfel numele lungi
+   * de cursuri s-ar rupe în două.
+   */
+  function randuriICal(text) {
+    const brute = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+    const out = [];
+    brute.forEach(r => {
+      if (/^[ \t]/.test(r) && out.length) out[out.length - 1] += r.slice(1);
+      else out.push(r);
+    });
+    return out;
+  }
+
+  const desfaceICal = v => String(v || '')
+    .replace(/\\n/gi, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\');
+
+  /** Împarte o listă iCalendar la virgule, sărind peste cele scrise „\,”. */
+  function bucatiICal(v) {
+    const out = [];
+    let curent = '';
+    for (let i = 0; i < v.length; i++) {
+      if (v[i] === '\\' && i + 1 < v.length) { curent += v[i] + v[i + 1]; i++; continue; }
+      if (v[i] === ',') { out.push(curent); curent = ''; continue; }
+      curent += v[i];
+    }
+    out.push(curent);
+    return out.map(desfaceICal);
+  }
+
+  /** „20260901T140000Z” sau „20260901” → „2026-09-01”, după ora de aici. */
+  function dataDinICal(v) {
+    const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?$/.exec(String(v || '').trim());
+    if (!m) return '';
+    if (!m[4]) return m[1] + '-' + m[2] + '-' + m[3];
+    // ora vine de obicei în UTC, iar ziua se poate schimba când o aducem la
+    // ora noastră: un termen de la 01:00 e încă „ieri” pentru calendarul lor
+    const d = m[7]
+      ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]))
+      : new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+    return isNaN(d.getTime()) ? '' : caData(d);
+  }
+
+  /* Moodle scrie titlurile în limba în care e pus, deci căutăm în amândouă. */
+  const TIPURI_DUPA_CUVANT = [
+    ['partial', /par[țt]ial|midterm/i],
+    ['colocviu', /colocviu/i],
+    ['examen', /examen|\bexam\b|\bfinal\b/i],
+    ['test', /\btest\b|quiz|chestionar/i],
+    ['predare', /pred|tem[ăa]\b|assignment|homework|proiect|due|submi/i]
+  ];
+
+  /** Gol înseamnă „Altceva”: mai bine necunoscut decât ghicit greșit. */
+  function tipTermen(text) {
+    const gasit = TIPURI_DUPA_CUVANT.find(p => p[1].test(text || ''));
+    return gasit ? gasit[0] : '';
+  }
+
+  /** Scoate evenimentele dintr-un calendar iCalendar. */
+  function citesteCalendarul(text) {
+    const evenimente = [];
+    let e = null;
+    randuriICal(text).forEach(rand => {
+      if (/^BEGIN:VEVENT\s*$/i.test(rand)) {
+        e = { uid: '', titlu: '', data: '', curs: '', descriere: '' };
+        return;
+      }
+      if (/^END:VEVENT\s*$/i.test(rand)) {
+        if (e && e.titlu && e.data) evenimente.push(e);
+        e = null;
+        return;
+      }
+      if (!e) return;
+      const taie = rand.indexOf(':');
+      if (taie < 0) return;
+      const cheie = rand.slice(0, taie).split(';')[0].trim().toUpperCase();
+      const val = rand.slice(taie + 1);
+      if (cheie === 'UID') e.uid = val.trim();
+      else if (cheie === 'SUMMARY') e.titlu = desfaceICal(val).trim();
+      else if (cheie === 'DESCRIPTION') e.descriere = desfaceICal(val).trim();
+      else if (cheie === 'CATEGORIES') e.curs = (bucatiICal(val)[0] || '').trim();
+      else if (cheie === 'DTSTART') e.data = dataDinICal(val);
+    });
+    return evenimente;
+  }
+
+  /**
+   * Ce s-ar schimba dacă am aduce calendarul: materii noi, termene noi și
+   * termene care doar se înnoiesc. Nu schimbă nimic — doar socotește, ca să
+   * poți vedea înainte de a spune „da”.
+   */
+  function pregatesteMoodle(evenimente) {
+    const materii = [];
+    const randuri = [];
+    evenimente.forEach(e => {
+      if (e.curs && materii.indexOf(e.curs) < 0 && !potrivesteMaterie(e.curs)) materii.push(e.curs);
+      const sursa = e.uid ? 'moodle:' + e.uid : '';
+      const vechi = sursa ? termene().find(t => t.sursa === sursa) : null;
+      const laFel = !!vechi && vechi.titlu === e.titlu.slice(0, 80) && vechi.data === e.data;
+      // Un calendar de facultate ține și tot semestrul trecut. Termenele care
+      // au trecut se văd, dar nu se bifează singure: altfel prima aducere ar
+      // umple lista cu zeci de lucruri deja făcute.
+      const z = zileRamase(e.data);
+      const trecut = z !== null && z < 0;
+      randuri.push({
+        eveniment: e, sursa: sursa, vechi: vechi || null, trecut: trecut,
+        stare: !vechi ? 'nou' : (laFel ? 'neschimbat' : 'schimbat'),
+        ales: (!vechi || !laFel) && !trecut
+      });
+    });
+    randuri.sort((a, b) => a.eveniment.data.localeCompare(b.eveniment.data));
+    return { materii: materii, randuri: randuri };
+  }
+
+  function aplicaMoodle(plan) {
+    // materiile întâi: termenele au nevoie de ele ca să aibă de ce se lega
+    let materiiNoi = 0;
+    plan.materii.forEach(nume => {
+      if (potrivesteMaterie(nume)) return;
+      db.subjects.push({
+        id: uid(), name: String(nume).slice(0, 60), prof: '',
+        color: PALETTE[db.subjects.length % PALETTE.length]
+      });
+      materiiNoi++;
+    });
+
+    let noi = 0, innoite = 0;
+    plan.randuri.forEach(r => {
+      if (!r.ales) return;
+      const e = r.eveniment;
+      const materie = e.curs ? potrivesteMaterie(e.curs) : null;
+      if (r.vechi) {
+        r.vechi.titlu = e.titlu.slice(0, 80);
+        r.vechi.data = e.data;
+        if (!r.vechi.subjectId) r.vechi.subjectId = materie;
+        innoite++;
+        return;
+      }
+      termene().push({
+        id: uid(),
+        titlu: e.titlu.slice(0, 80),
+        data: e.data,
+        tip: tipTermen(e.titlu + ' ' + e.descriere),
+        subjectId: materie,
+        nota: e.curs ? 'Din Moodle · ' + e.curs : 'Din Moodle',
+        gata: false,
+        sursa: r.sursa
+      });
+      noi++;
+    });
+
+    moodle().ultima = new Date().toISOString();
+    salveazaTermene();
+    renderSidebar();
+    renderList();
+    const n = activeNote(); if (n) renderSubjectSelect(n);
+    return { noi: noi, innoite: innoite, materii: materiiNoi };
+  }
+
+  /**
+   * Aducerea calendarului. În aplicația de pe calculator o face Python, fiindcă
+   * browserul nu are voie să citească de pe alt site decât al lui — iar Moodle
+   * nu dă voie nimănui. Pe telefon, prin site, rămâne fișierul descărcat.
+   */
+  async function aduCalendarul(url) {
+    if (api() && api().fetch_calendar) {
+      const r = await api().fetch_calendar(url);
+      if (!r || !r.ok) throw new Error((r && r.eroare) || 'Nu am putut aduce calendarul.');
+      return r.text;
+    }
+    let raspuns;
+    try {
+      raspuns = await fetch(url, { credentials: 'omit' });
+    } catch (e) {
+      throw new Error('Serverul facultății nu dă voie paginii să citească de la el. ' +
+                      'Descarcă fișierul .ics din Moodle și alege-l de mai jos.');
+    }
+    if (!raspuns.ok) throw new Error('Serverul a răspuns cu eroarea ' + raspuns.status + '.');
+    return await raspuns.text();
+  }
+
+  let planMoodle = null;
+
+  function stareMoodle(text, rau) {
+    const el = $('#moodleStare');
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.toggle('e-rau', !!rau);
+  }
+
+  function randMoodle(r) {
+    const e = r.eveniment;
+    const rand = document.createElement('label');
+    rand.className = 'mrand mrand--' + r.stare;
+
+    const bifa = document.createElement('input');
+    bifa.type = 'checkbox';
+    bifa.checked = r.ales;
+    bifa.disabled = r.stare === 'neschimbat';
+    bifa.addEventListener('change', () => { r.ales = bifa.checked; sumarMoodle(); });
+    rand.appendChild(bifa);
+
+    const corp = document.createElement('span');
+    corp.className = 'mrand__corp';
+    const sus = document.createElement('span');
+    sus.className = 'mrand__titlu';
+    sus.textContent = e.titlu;
+    const jos = document.createElement('span');
+    jos.className = 'mrand__jos';
+    const z = zileRamase(e.data);
+    jos.textContent = e.data + (z === null ? '' : ' · ' + textZile(z)) +
+                      (e.curs ? ' · ' + e.curs : '');
+    corp.appendChild(sus);
+    corp.appendChild(jos);
+    rand.appendChild(corp);
+
+    const eticheta = document.createElement('span');
+    eticheta.className = 'mrand__stare';
+    eticheta.textContent = r.stare === 'nou' ? (r.trecut ? 'a trecut' : 'nou')
+                         : (r.stare === 'schimbat' ? 's-a mutat' : 'îl ai deja');
+    if (r.trecut) rand.classList.add('e-trecut');
+    rand.appendChild(eticheta);
+    return rand;
+  }
+
+  /** Bifează sau debifează dintr-o dată tot ce se poate alege. */
+  function bifeazaTotMoodle(pornit) {
+    if (!planMoodle) return;
+    planMoodle.randuri.forEach(r => {
+      if (r.stare === 'neschimbat') return;         // n-ai ce alege: îl ai deja
+      r.ales = pornit;
+    });
+    $$('.mrand input', $('#moodleRezultat')).forEach((b, i) => {
+      const r = planMoodle.randuri[i];
+      if (r && r.stare !== 'neschimbat') b.checked = pornit;
+    });
+    sumarMoodle();
+  }
+
+  function sumarMoodle() {
+    const aplica = $('#moodleAplica');
+    if (!planMoodle) { if (aplica) aplica.hidden = true; return; }
+    const alese = planMoodle.randuri.filter(r => r.ales).length;
+    if (aplica) aplica.hidden = !alese && !planMoodle.materii.length;
+    const el = $('#moodleSumar');
+    if (el) {
+      el.textContent = alese + (alese === 1 ? ' termen ales' : ' termene alese') +
+        (planMoodle.materii.length
+          ? ' · ' + planMoodle.materii.length +
+            (planMoodle.materii.length === 1 ? ' materie nouă' : ' materii noi')
+          : '');
+    }
+  }
+
+  function arataPlanulMoodle(text) {
+    const evenimente = citesteCalendarul(text);
+    const gazda = $('#moodleRezultat');
+    gazda.innerHTML = '';
+    if (!evenimente.length) {
+      planMoodle = null;
+      sumarMoodle();
+      stareMoodle('Calendarul nu are niciun eveniment cu dată. Verifică dacă ai ales ' +
+                  '„Toate evenimentele” și o perioadă mai lungă la export.', true);
+      return;
+    }
+    planMoodle = pregatesteMoodle(evenimente);
+    stareMoodle(evenimente.length + (evenimente.length === 1 ? ' eveniment citit' : ' evenimente citite') +
+                ' din calendar.');
+
+    if (planMoodle.materii.length) {
+      const cap = document.createElement('h3');
+      cap.className = 'moodle__cap';
+      cap.textContent = 'Materii care se vor crea';
+      gazda.appendChild(cap);
+      const lista = document.createElement('div');
+      lista.className = 'moodle__materii';
+      planMoodle.materii.forEach(nume => {
+        const b = document.createElement('span');
+        b.className = 'moodle__materie';
+        b.textContent = nume;
+        lista.appendChild(b);
+      });
+      gazda.appendChild(lista);
+    }
+
+    const cap2 = document.createElement('h3');
+    cap2.className = 'moodle__cap';
+    cap2.textContent = 'Termene';
+    gazda.appendChild(cap2);
+    const rand = document.createElement('div');
+    rand.className = 'moodle__bife';
+    const sumar = document.createElement('span');
+    sumar.className = 'moodle__sumar';
+    sumar.id = 'moodleSumar';
+    rand.appendChild(sumar);
+    const spatiu = document.createElement('span');
+    spatiu.className = 'spacer';
+    rand.appendChild(spatiu);
+    [['Bifează tot', true], ['Nicio bifă', false]].forEach(pereche => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'moodle__bifa';
+      b.textContent = pereche[0];
+      b.addEventListener('click', () => bifeazaTotMoodle(pereche[1]));
+      rand.appendChild(b);
+    });
+    gazda.appendChild(rand);
+
+    planMoodle.randuri.forEach(r => gazda.appendChild(randMoodle(r)));
+    sumarMoodle();
+  }
+
+  function actualizeazaInsignaMoodle() {
+    const el = $('#cMoodle');
+    if (!el) return;
+    const cate = termene().filter(t => t.sursa && t.sursa.indexOf('moodle:') === 0).length;
+    el.textContent = cate ? String(cate) : '—';
+  }
+
+  function deschideMoodle() {
+    planMoodle = null;
+    $('#moodleRezultat').innerHTML = '';
+    $('#moodleAplica').hidden = true;
+    $('#moodleUrl').value = moodle().url || '';
+    const cand = moodle().ultima ? new Date(moodle().ultima) : null;
+    stareMoodle(cand && !isNaN(cand.getTime())
+      ? 'Ultima aducere: ' + cand.toLocaleDateString('ro-RO') + '.'
+      : '');
+    closeNav();
+    $('#moodleDlg').showModal();
+  }
+
+  async function citesteDinMoodle() {
+    const url = ($('#moodleUrl').value || '').trim();
+    if (!url) { stareMoodle('Lipsește adresa calendarului.', true); return; }
+    stareMoodle('Aduc calendarul…');
+    $('#moodleAdu').disabled = true;
+    try {
+      const text = await aduCalendarul(url);
+      moodle().url = url;
+      persist();
+      arataPlanulMoodle(text);
+    } catch (e) {
+      planMoodle = null;
+      sumarMoodle();
+      stareMoodle(e.message || 'Nu am putut aduce calendarul.', true);
+    } finally {
+      $('#moodleAdu').disabled = false;
+    }
+  }
+
+  /* ==========================================================
      REPETIȚIE PENTRU EXAMEN
      Întrebările vin din propriile notițe: orice linie „ceva :: altceva".
      Starea se ține pe amprenta întrebării, nu pe poziția ei în text, ca să
@@ -4122,6 +4498,39 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     pe('#repetitieBtn', 'click', deschideRepetitia);
     pe('#repetitieClose', 'click', () => $('#repetitieDlg').close());
     pe('#repetitieClose2', 'click', () => $('#repetitieDlg').close());
+
+    /* ---------- Moodle ---------- */
+    pe('#moodleBtn', 'click', deschideMoodle);
+    pe('#moodleClose', 'click', () => $('#moodleDlg').close());
+    pe('#moodleClose2', 'click', () => $('#moodleDlg').close());
+    pe('#moodleAdu', 'click', citesteDinMoodle);
+    pe('#moodleUrl', 'keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); citesteDinMoodle(); }
+    });
+    pe('#moodleFisier', 'click', () => $('#moodleInput').click());
+    pe('#moodleInput', 'change', e => {
+      const f = e.target.files[0];
+      e.target.value = '';                    // același fișier poate fi ales din nou
+      if (!f) return;
+      const fr = new FileReader();
+      fr.onerror = () => stareMoodle('Nu am putut citi fișierul.', true);
+      fr.onload = () => {
+        try { arataPlanulMoodle(String(fr.result || '')); }
+        catch (err) { stareMoodle('Fișierul nu pare a fi un calendar.', true); }
+      };
+      fr.readAsText(f);
+    });
+    pe('#moodleAplica', 'click', () => {
+      if (!planMoodle) return;
+      const r = aplicaMoodle(planMoodle);
+      $('#moodleDlg').close();
+      const parti = [];
+      if (r.materii) parti.push(r.materii + (r.materii === 1 ? ' materie' : ' materii'));
+      if (r.noi) parti.push(r.noi + (r.noi === 1 ? ' termen nou' : ' termene noi'));
+      if (r.innoite) parti.push(r.innoite + (r.innoite === 1 ? ' termen mutat' : ' termene mutate'));
+      toast(parti.length ? 'Adus din Moodle: ' + parti.join(', ') : 'Nimic nou de adus',
+            'ok', { label: 'Vezi termenele', fn: deschideTermene }, 7000);
+    });
     pe('#repetitieDlg', 'close', () => { sesiune = null; renderSidebar(); });
 
     /* ---------- termene ---------- */
