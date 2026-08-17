@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 14;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 15;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -477,10 +477,12 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   }
 
   /* ==========================================================
-     DESEN
-     Liniile se țin ca puncte, nu ca pixeli: așa „anulează" e o simplă
-     scoatere din listă, iar desenul se poate redesena curat la orice mărime
-     (rotirea telefonului nu-l mai strică).
+     DESEN, CHIAR ÎN NOTIȚĂ
+     Desenul nu mai are fereastră separată: pânza stă între rânduri, acolo unde
+     ai pus-o, iar uneltele apar sub ea cât timp desenezi. Liniile se țin ca
+     puncte, în sistemul de coordonate al desenului (nu în pixeli de ecran):
+     așa „anulează” e o simplă scoatere din listă, iar pânza poate fi arătată la
+     orice lățime fără ca desenul să se mute din loc.
      ========================================================== */
   const CULORI_DESEN = ['#0F172A', '#64748B', '#2563EB', '#0EA5E9', '#059669',
                         '#CA8A04', '#EA580C', '#DC2626', '#DB2777', '#7C3AED'];
@@ -506,13 +508,13 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   const GROSIME_MIN = 1, GROSIME_MAX = 48;
   const FUNDAL_DESEN = '#FFFFFF';
   const MAX_LATURA_DESEN = 1800;
+  const INALTIME_DESEN = 260;          // cât de înalt e un desen nou, în notiță
 
-  let desen = null;      // { linii, culoare, grosime, radiera, ctx, dpr }
+  /* Pensula, culoarea și grosimea rămân alese de la un desen la altul. */
+  const unelteDesen = { pensula: 'pix', culoare: CULORI_DESEN[0], grosime: 6 };
 
-  function ctxDesen() {
-    const c = $('#desenCanvas');
-    return c ? c.getContext('2d') : null;
-  }
+  /* Desenul la care se lucrează chiar acum — unul singur — sau null. */
+  let desen = null;
 
   /** Fiecare pensulă își pune propriile setări pe pânză. */
   function stilPensula(g, l) {
@@ -562,14 +564,20 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     g.stroke();
   }
 
+  /** Hârtie albă, peste ea ce era desenat înainte, apoi liniile de acum. */
   function redeseneaza() {
-    const c = $('#desenCanvas'), g = ctxDesen();
-    if (!c || !g || !desen) return;
-    g.setTransform(desen.dpr, 0, 0, desen.dpr, 0, 0);
+    if (!desen || !desen.ctx) return;
+    const g = desen.ctx;
+    g.setTransform(desen.scara, 0, 0, desen.scara, 0, 0);
     g.globalAlpha = 1;
     g.shadowBlur = 0;
     g.fillStyle = FUNDAL_DESEN;
-    g.fillRect(0, 0, c.width / desen.dpr, c.height / desen.dpr);
+    g.fillRect(0, 0, desen.L, desen.H);
+
+    if (desen.fundal) {
+      try { g.drawImage(desen.fundal, 0, 0, desen.L, desen.H); }
+      catch (e) { /* imaginea n-a putut fi folosită: rămân doar liniile noi */ }
+    }
 
     desen.linii.forEach(l => {
       if (!l.puncte.length) return;
@@ -585,132 +593,220 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     g.globalAlpha = 1;
     g.shadowBlur = 0;
 
-    const sfat = $('#desenSfat');
-    if (sfat) sfat.hidden = desen.linii.length > 0;
-    const inapoi = $('#desenInapoi'), sterge = $('#desenSterge');
-    if (inapoi) inapoi.disabled = !desen.linii.length;
-    if (sterge) sterge.disabled = !desen.linii.length;
+    if (desen.sfat) desen.sfat.hidden = !desen.nou || desen.linii.length > 0;
+    if (desen.btnInapoi) desen.btnInapoi.disabled = !desen.linii.length;
+    if (desen.btnCurata) desen.btnCurata.disabled = !desen.linii.length;
   }
 
   /**
-   * Mărimea o dă CSS-ul; noi punem doar rezoluția pânzei. Nu scriem stiluri
-   * înapoi, ca observatorul de mărime să nu se declanșeze singur la nesfârșit.
+   * Rezoluția pânzei urmează mărimea la care e afișată, dar desenul rămâne în
+   * coordonatele lui: schimbarea lățimii ecranului nu mută nicio linie.
    */
-  function potrivestePanza() {
-    const c = $('#desenCanvas');
-    if (!c || !desen) return;
+  function masoaraPanza() {
+    if (!desen || !desen.canvas) return;
+    const c = desen.canvas;
+    const afisat = c.clientWidth;
+    if (!afisat) return;                          // încă n-are loc în pagină
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const l = c.clientWidth, i = c.clientHeight;
-    if (!l || !i) return;                       // dialogul încă nu are dimensiuni
-    const cheie = l + 'x' + i + '@' + dpr;
-    if (cheie === desen.dim) return;
-    desen.dim = cheie;
-    desen.dpr = dpr;
-    c.width = Math.round(l * dpr);
-    c.height = Math.round(i * dpr);
+    const scara = Math.max(0.4, Math.min(3, afisat / desen.L)) * dpr;
+    const w = Math.round(desen.L * scara), i = Math.round(desen.H * scara);
+    if (w === c.width && i === c.height) return;
+    c.width = w;
+    c.height = i;
+    desen.scara = scara;
+    desen.ctx = c.getContext('2d');
     redeseneaza();
   }
 
   /** Bulina de lângă glisor arată din ce iese linia: mărimea și culoarea ei. */
   function actualizeazaBulina() {
-    const b = $('#desenBulina');
-    if (!b || !desen) return;
-    const d = Math.round(Math.max(5, Math.min(34, desen.grosime * 0.8 + 5)));
+    const b = desen && desen.bulina;
+    if (!b) return;
+    const d = Math.round(Math.max(5, Math.min(30, unelteDesen.grosime * 0.7 + 5)));
     b.style.width = d + 'px';
     b.style.height = d + 'px';
-    b.style.background = desen.pensula === 'radiera' ? 'var(--surface)' : desen.culoare;
-    b.style.opacity = desen.pensula === 'marker' ? '0.45' : '1';
+    b.style.background = unelteDesen.pensula === 'radiera' ? 'var(--surface)' : unelteDesen.culoare;
+    b.style.opacity = unelteDesen.pensula === 'marker' ? '0.45' : '1';
   }
 
-  function randeazaUnelteDesen() {
-    // Uneltele rămân în pagină și după ce fereastra s-a închis, deci fiecare
-    // apăsare trebuie să verifice întâi că mai există un desen în lucru.
-    if (!desen) return;
-    const pensule = $('#desenPensule');
-    if (pensule) {
-      pensule.innerHTML = '';
-      PENSULE.forEach(p => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        const activa = p.id === desen.pensula;
-        b.className = 'desen-pensula' + (activa ? ' is-active' : '');
-        b.setAttribute('role', 'radio');
-        b.setAttribute('aria-checked', String(activa));
-        b.setAttribute('aria-label', p.nume);
-        b.title = p.nume + ' — ' + p.desc;
-        b.innerHTML = ICOANE_PENSULA[p.id] || '';
-        b.addEventListener('click', () => {
-          if (!desen) return;
-          desen.pensula = p.id;
-          randeazaUnelteDesen();
-        });
-        pensule.appendChild(b);
-      });
-    }
-
-    const culori = $('#desenCulori');
-    if (culori) {
-      culori.innerHTML = '';
-      CULORI_DESEN.forEach(cul => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        const aleasa = cul === desen.culoare && desen.pensula !== 'radiera';
-        b.className = 'desen-culoare' + (aleasa ? ' is-active' : '');
-        b.style.background = cul;
-        b.setAttribute('role', 'radio');
-        b.setAttribute('aria-checked', String(aleasa));
-        b.setAttribute('aria-label', 'Culoare ' + cul);
-        b.addEventListener('click', () => {
-          if (!desen) return;
-          desen.culoare = cul;
-          // dacă alegi o culoare, sigur nu vrei să ștergi
-          if (desen.pensula === 'radiera') desen.pensula = 'pix';
-          randeazaUnelteDesen();
-        });
-        culori.appendChild(b);
-      });
-    }
-
-    const glisor = $('#desenGrosime');
-    if (glisor && +glisor.value !== desen.grosime) glisor.value = String(desen.grosime);
-    const oricare = $('#desenOricare');
-    if (oricare && desen.pensula !== 'radiera') oricare.value = desen.culoare;
+  function actualizeazaUnelte() {
+    if (!desen || !desen.bara) return;
+    $$('.desen-pensula', desen.bara).forEach(b => {
+      const activ = b.dataset.pensula === unelteDesen.pensula;
+      b.classList.toggle('is-active', activ);
+      b.setAttribute('aria-checked', String(activ));
+    });
+    $$('.desen-culoare', desen.bara).forEach(b => {
+      const activ = b.dataset.culoare === unelteDesen.culoare &&
+                    unelteDesen.pensula !== 'radiera';
+      b.classList.toggle('is-active', activ);
+      b.setAttribute('aria-checked', String(activ));
+    });
+    const camp = $('input[type="color"]', desen.bara);
+    if (camp && unelteDesen.pensula !== 'radiera') camp.value = unelteDesen.culoare;
     actualizeazaBulina();
   }
 
-  function legPanza() {
-    const c = $('#desenCanvas');
-    if (!c || c.dataset.legat) return;
-    c.dataset.legat = '1';
+  function butonDesen(act, titlu, icoana) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'icon-btn';
+    b.dataset.dz = act;
+    b.title = titlu;
+    b.setAttribute('aria-label', titlu);
+    b.innerHTML = icoana;
+    return b;
+  }
 
-    // Prinde și deschiderea dialogului, și rotirea telefonului. Urmărim locul în
-    // care stă pânza, nu pânza: altfel schimbarea ei de mărime ar porni o nouă
-    // măsurătoare, care ar schimba-o iar — la nesfârșit.
-    if (window.ResizeObserver) new ResizeObserver(potrivestePanza).observe(c.parentElement || c);
+  /** Bara de unelte de sub pânză: pensule, grosime, culori, anulează, gata. */
+  function construiesteBaraDesen() {
+    const bara = document.createElement('div');
+    bara.className = 'desen-bara';
 
+    const pensule = document.createElement('div');
+    pensule.className = 'desen-pensule';
+    pensule.setAttribute('role', 'radiogroup');
+    pensule.setAttribute('aria-label', 'Pensulă');
+    PENSULE.forEach(p => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'desen-pensula';
+      b.dataset.pensula = p.id;
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-label', p.nume);
+      b.title = p.nume + ' — ' + p.desc;
+      b.innerHTML = ICOANE_PENSULA[p.id] || '';
+      b.addEventListener('click', () => {
+        unelteDesen.pensula = p.id;
+        actualizeazaUnelte();
+      });
+      pensule.appendChild(b);
+    });
+    bara.appendChild(pensule);
+
+    const marime = document.createElement('label');
+    marime.className = 'desen-marime';
+    marime.title = 'Grosimea liniei';
+    const bulina = document.createElement('span');
+    bulina.className = 'desen-bulina';
+    bulina.setAttribute('aria-hidden', 'true');
+    const glisor = document.createElement('input');
+    glisor.type = 'range';
+    glisor.min = String(GROSIME_MIN);
+    glisor.max = String(GROSIME_MAX);
+    glisor.step = '1';
+    glisor.value = String(unelteDesen.grosime);
+    glisor.setAttribute('aria-label', 'Grosimea liniei');
+    glisor.addEventListener('input', e => {
+      unelteDesen.grosime = Math.min(GROSIME_MAX, Math.max(GROSIME_MIN, +e.target.value || 1));
+      actualizeazaBulina();
+    });
+    marime.appendChild(bulina);
+    marime.appendChild(glisor);
+    bara.appendChild(marime);
+
+    const actiuni = document.createElement('div');
+    actiuni.className = 'desen-actiuni';
+
+    const btnInapoi = butonDesen('inapoi', 'Anulează ultima linie',
+      '<svg class="ic"><use href="#i-restore"></use></svg>');
+    btnInapoi.addEventListener('click', () => {
+      if (!desen || !desen.linii.length) return;
+      desen.linii.pop();
+      redeseneaza();
+      programeazaSalvareaDesenului();
+    });
+
+    const btnCurata = butonDesen('curata', 'Șterge liniile de acum',
+      '<svg class="ic"><use href="#i-trash"></use></svg>');
+    btnCurata.addEventListener('click', async () => {
+      if (!desen || !desen.linii.length) return;
+      const cate = desen.linii.length;
+      const ok = await confirmDialog('Ștergi liniile astea?',
+        'Cele ' + cate + ' linii desenate acum vor dispărea.', 'Șterge');
+      if (ok && desen) { desen.linii = []; redeseneaza(); programeazaSalvareaDesenului(); }
+    });
+
+    const btnGata = document.createElement('button');
+    btnGata.type = 'button';
+    btnGata.className = 'btn btn--primary btn--sm';
+    btnGata.dataset.dz = 'gata';
+    btnGata.title = 'Gata, închide desenul';
+    btnGata.setAttribute('aria-label', 'Gata, închide desenul');
+    btnGata.innerHTML = '<svg class="ic"><use href="#i-check"></use></svg>' +
+                        '<span class="btn__text">Gata</span>';
+    btnGata.addEventListener('click', () => incheieDesenul());
+
+    actiuni.appendChild(btnInapoi);
+    actiuni.appendChild(btnCurata);
+    actiuni.appendChild(btnGata);
+    bara.appendChild(actiuni);
+
+    const culori = document.createElement('div');
+    culori.className = 'desen-culori';
+    culori.setAttribute('role', 'radiogroup');
+    culori.setAttribute('aria-label', 'Culoare');
+    CULORI_DESEN.forEach(cul => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'desen-culoare';
+      b.dataset.culoare = cul;
+      b.style.background = cul;
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-label', 'Culoare ' + cul);
+      b.addEventListener('click', () => {
+        unelteDesen.culoare = cul;
+        // dacă alegi o culoare, sigur nu vrei să ștergi
+        if (unelteDesen.pensula === 'radiera') unelteDesen.pensula = 'pix';
+        actualizeazaUnelte();
+      });
+      culori.appendChild(b);
+    });
+    const oricare = document.createElement('label');
+    oricare.className = 'desen-oricare';
+    oricare.title = 'Orice culoare';
+    const camp = document.createElement('input');
+    camp.type = 'color';
+    camp.value = unelteDesen.culoare;
+    camp.setAttribute('aria-label', 'Orice culoare');
+    camp.addEventListener('input', e => {
+      unelteDesen.culoare = e.target.value;
+      if (unelteDesen.pensula === 'radiera') unelteDesen.pensula = 'pix';
+      actualizeazaUnelte();
+    });
+    oricare.appendChild(camp);
+    culori.appendChild(oricare);
+    bara.appendChild(culori);
+
+    return { bara: bara, bulina: bulina, btnInapoi: btnInapoi, btnCurata: btnCurata };
+  }
+
+  function legPanza(c) {
     const punct = e => {
       const r = c.getBoundingClientRect();
-      return { x: e.clientX - r.left, y: e.clientY - r.top };
+      const k = r.width ? desen.L / r.width : 1;
+      return { x: (e.clientX - r.left) * k, y: (e.clientY - r.top) * k };
     };
 
     c.addEventListener('pointerdown', e => {
-      if (!desen) return;
+      if (!desen || desen.canvas !== c) return;
       e.preventDefault();
       desen.pointer = e.pointerId;
-      // captura ajută degetul să nu „scape" de pe pânză, dar nu ne bazăm pe ea:
+      // captura ajută degetul să nu „scape” de pe pânză, dar nu ne bazăm pe ea:
       // în unele situații aruncă, și atunci restul funcției n-ar mai rula
       try { c.setPointerCapture(e.pointerId); } catch (err) { /* mergem și fără */ }
       desen.linii.push({
-        tip: desen.pensula,
-        culoare: desen.culoare,
-        grosime: desen.grosime,
+        tip: unelteDesen.pensula,
+        culoare: unelteDesen.culoare,
+        grosime: unelteDesen.grosime,
         puncte: [punct(e)]
       });
       redeseneaza();
     });
 
     c.addEventListener('pointermove', e => {
-      if (!desen || desen.pointer !== e.pointerId || !desen.linii.length) return;
+      if (!desen || desen.canvas !== c) return;
+      if (desen.pointer !== e.pointerId || !desen.linii.length) return;
       e.preventDefault();
       const linie = desen.linii[desen.linii.length - 1];
       // pe ecrane rapide, punctele intermediare fac linia netedă; când lista
@@ -725,33 +821,33 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       if (!desen || desen.pointer !== e.pointerId) return;
       desen.pointer = null;
       try { c.releasePointerCapture(e.pointerId); } catch (err) { /* deja eliberat */ }
+      programeazaSalvareaDesenului();
     };
     c.addEventListener('pointerup', gata);
     c.addEventListener('pointercancel', gata);
     c.addEventListener('pointerleave', gata);
   }
 
-  function deschideDesenul() {
-    if (!activeNote()) return;
-    desen = { linii: [], culoare: CULORI_DESEN[0], grosime: 6,
-              pensula: 'pix', dpr: 1, dim: '', pointer: null };
-    randeazaUnelteDesen();
-    $('#desenDlg').showModal();
-    legPanza();
-    potrivestePanza();                          // observatorul prinde și restul
+  function panzaGoala(L, H) {
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(L));
+    c.height = Math.max(1, Math.round(H));
+    const g = c.getContext('2d');
+    g.fillStyle = FUNDAL_DESEN;
+    g.fillRect(0, 0, c.width, c.height);
+    return c.toDataURL('image/png');
   }
 
-  async function salveazaDesenul() {
-    if (!desen || !desen.linii.length) { toast('Desenul e gol.', 'err'); return; }
-    const c = $('#desenCanvas');
-
+  function pngDesen(d) {
+    const c = d.canvas;
+    if (!c || !c.width) return null;
     // la nevoie micșorăm, ca fișierul să rămână rezonabil
     let sursa = c;
     const f = Math.min(1, MAX_LATURA_DESEN / Math.max(c.width, c.height));
     if (f < 1) {
       const mic = document.createElement('canvas');
-      mic.width = Math.round(c.width * f);
-      mic.height = Math.round(c.height * f);
+      mic.width = Math.max(1, Math.round(c.width * f));
+      mic.height = Math.max(1, Math.round(c.height * f));
       const g = mic.getContext('2d');
       g.fillStyle = FUNDAL_DESEN;
       g.fillRect(0, 0, mic.width, mic.height);
@@ -759,20 +855,160 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       sursa = mic;
     }
     // PNG, nu JPEG: liniile subțiri ies curate și fișierul e mai mic pe desene
-    const url = sursa.toDataURL('image/png');
+    return sursa.toDataURL('image/png');
+  }
 
+  function incarcaImaginea(url) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+  }
+
+  /**
+   * Salvarea din mers: dacă aplicația se închide pe neașteptate, desenul de
+   * până atunci e deja pe disc. Blocul rămâne deschis, se desenează mai departe.
+   */
+  let cronoDesen = null;
+  function programeazaSalvareaDesenului() {
+    clearTimeout(cronoDesen);
+    cronoDesen = setTimeout(salveazaDesenulInLucru, 900);
+  }
+
+  function salveazaDesenulInLucru() {
+    clearTimeout(cronoDesen);
+    if (!desen || !desen.linii.length) return;
+    const url = pngDesen(desen);
+    if (!url) return;
+    urlPoze.set(desen.id, url);
+    poze.pune(desen.id, url);
+  }
+
+  /** Trece un bloc din notiță în modul „se desenează acum”. */
+  async function activeazaDesen(fig, nou) {
+    const nota = activeNote();
+    if (!fig || !fig.dataset.id || !nota) return;
+    if (desen && desen.fig === fig) return;
+    incheieDesenul();
+
+    const id = fig.dataset.id;
+    const L = Math.max(160, Math.round(fig.clientWidth || 640));
+    let H = INALTIME_DESEN, fundal = null;
+
+    if (!nou) {
+      // ce era desenat până acum devine fundal: se desenează mai departe peste
+      const url = urlPoze.get(id) || await poze.ia(id);
+      if (url) fundal = await incarcaImaginea(url);
+      if (fundal && fundal.naturalWidth) {
+        H = Math.max(80, Math.round(L * fundal.naturalHeight / fundal.naturalWidth));
+      }
+      // între timp se putea schimba notița; atunci blocul nu mai e în pagină
+      if (!fig.isConnected || activeNote() !== nota) return;
+    }
+
+    desen = {
+      id: id, fig: fig, notaId: nota.id, alt: fig.dataset.alt || 'desen',
+      L: L, H: H, scara: 1, fundal: fundal, linii: [], pointer: null,
+      nou: !!nou, canvas: null, ctx: null,
+      bara: null, bulina: null, btnInapoi: null, btnCurata: null, sfat: null
+    };
+    construiesteDesenul();
+  }
+
+  function construiesteDesenul() {
+    const fig = desen.fig;
+    fig.classList.add('ed-desen', 'is-activ');
+    fig.innerHTML = '';
+
+    const c = document.createElement('canvas');
+    c.className = 'desen-panza';
+    // raportul laturilor ține locul înălțimii: pânza se întinde cât notița,
+    // iar înălțimea vine singură, fără să măsurăm noi nimic
+    c.style.aspectRatio = desen.L + ' / ' + desen.H;
+    fig.appendChild(c);
+
+    const sfat = document.createElement('p');
+    sfat.className = 'desen-sfat';
+    // același raport ca pânza: sfatul o acoperă exact, oricât ar fi de lată
+    sfat.style.aspectRatio = desen.L + ' / ' + desen.H;
+    sfat.textContent = 'Desenează aici cu degetul, cu mouse-ul sau cu creionul.';
+    sfat.hidden = !desen.nou;
+    fig.appendChild(sfat);
+
+    const u = construiesteBaraDesen();
+    fig.appendChild(u.bara);
+
+    desen.canvas = c;
+    desen.ctx = c.getContext('2d');
+    desen.sfat = sfat;
+    desen.bara = u.bara;
+    desen.bulina = u.bulina;
+    desen.btnInapoi = u.btnInapoi;
+    desen.btnCurata = u.btnCurata;
+
+    legPanza(c);
+    actualizeazaUnelte();
+    masoaraPanza();
+    redeseneaza();
+    // notița poate fi lungă: aducem pânza în dreptul ochilor, altfel ai apăsa
+    // pe creion și n-ai vedea unde s-a deschis desenul
+    try { fig.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    catch (e) { fig.scrollIntoView(); }
+  }
+
+  /** Închide desenul în lucru: îl salvează și întoarce blocul la modul liniștit. */
+  function incheieDesenul() {
+    const d = desen;
+    if (!d) return;
+    desen = null;
+    clearTimeout(cronoDesen);
+
+    // Desen început și lăsat gol: blocul pleacă, ca să nu rămână o pată albă.
+    // Scoaterea lui reface casetele de text, deci ducem noi cursorul la locul
+    // lipiturii — altfel apăsarea care a închis desenul n-ar mai duce nicăieri.
+    if (d.nou && !d.linii.length) {
+      const unde = $$('#editorFlux > *').indexOf(d.fig);
+      stergeMarcajMedia(d.notaId, d.id);
+      const t = $$('#editorFlux > *')[Math.max(0, unde - 1)];
+      if (t && t.tagName === 'TEXTAREA') {
+        t.focus();
+        t.setSelectionRange(t.value.length, t.value.length);
+      }
+      return;
+    }
+
+    const url = pngDesen(d);
+    if (url) {
+      urlPoze.set(d.id, url);
+      poze.pune(d.id, url);
+    }
+    if (d.fig.isConnected) {
+      d.fig.classList.remove('is-activ');
+      umpleFiguraMedia(d.fig, d.id, d.alt, url || urlPoze.get(d.id));
+    }
+    const n = activeNote();
+    if (n && n.id === d.notaId) touch(n);
+  }
+
+  async function desenNou() {
     const nota = activeNote();
     if (!nota) return;
-    const id = 'd' + uid();
-    if (!await poze.pune(id, url)) { toast('Nu am putut salva desenul.', 'err'); return; }
+    incheieDesenul();
 
-    desen = null;
-    // închidem întâi fereastra: cât e deschisă, restul paginii nu poate primi
-    // cursorul, iar noi vrem să lăsăm cursorul sub desen
-    $('#desenDlg').close();
+    const flux = $('#editorFlux');
+    const L = Math.max(200, Math.round((flux && flux.clientWidth) || 640));
+    const id = 'd' + uid();
+    // punem din prima o pânză albă pe disc: așa notița nu trimite niciodată
+    // către un desen care încă nu există
+    const url = panzaGoala(L, INALTIME_DESEN);
+    if (!await poze.pune(id, url)) { toast('Nu am putut începe desenul.', 'err'); return; }
+    urlPoze.set(id, url);
+
     puneMedia('desen', id);
-    if (ui.preview) renderEditor();
-    toast('Desen adăugat în notiță', 'ok');
+    const fig = $('#editorFlux figure[data-id="' + id + '"]');
+    if (fig) await activeazaDesen(fig, true);
   }
 
   /* ==========================================================
@@ -852,6 +1088,58 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     requestAnimationFrame(() => $$('#editorFlux > textarea').forEach(creste));
   }
 
+  /**
+   * Blocul unei poze sau al unui desen, așa cum arată când nu se desenează.
+   * Desenele au în plus butonul care le redeschide: se poate desena mai
+   * departe peste ele, oricând, fără să pleci din notiță.
+   */
+  function umpleFiguraMedia(fig, id, alt, url) {
+    const eDesen = String(id)[0] === 'd';
+    fig.className = 'ed-media' + (eDesen ? ' ed-desen' : '');
+    fig.dataset.id = id;
+    fig.dataset.alt = alt || '';
+    fig.innerHTML = '';
+
+    const img = document.createElement('img');
+    img.dataset.poza = id;
+    img.alt = alt || (eDesen ? 'desen' : 'poză');
+    if (url) img.src = url;
+    fig.appendChild(img);
+
+    const bara = document.createElement('figcaption');
+    bara.className = 'ed-media__bara';
+    bara.innerHTML =
+      '<span class="ed-media__nume">' + (eDesen ? 'Desen' : 'Poză') + '</span>' +
+      '<span class="ed-media__act">' +
+        (eDesen ? '<button type="button" class="ed-media__btn ed-media__btn--desen"' +
+                  ' data-act="deseneaza">Desenează</button>' : '') +
+        '<button type="button" class="ed-media__btn" data-act="sterge">Șterge</button>' +
+      '</span>';
+    fig.appendChild(bara);
+    return fig;
+  }
+
+  /**
+   * Scoate marcajul unei imagini din textul unei notițe, oriunde s-ar afla.
+   * Merge și când notița nu mai e cea deschisă — spre deosebire de ștergerea
+   * din pagină, care se sprijină pe blocurile de pe ecran.
+   */
+  function stergeMarcajMedia(notaId, id) {
+    const n = (db.notes || []).find(x => x.id === notaId);
+    if (!n) return;
+    const re = new RegExp('\\n{0,2}[ \\t]*!\\[[^\\]]*\\]\\(uninotes:' + id + '\\)[ \\t]*\\n?', 'g');
+    n.content = (n.content || '').replace(re, '\n');
+    poze.sterge(id);
+    urlPoze.delete(id);
+    const activa = activeNote();
+    if (activa && activa.id === notaId) {
+      construiesteFlux(n.content);
+      touch(n);
+    } else {
+      scheduleSave();
+    }
+  }
+
   function construiesteFlux(md) {
     const flux = $('#editorFlux');
     if (!flux) return;
@@ -868,23 +1156,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         flux.appendChild(ta);
         return;
       }
-      const fig = document.createElement('figure');
-      fig.className = 'ed-media';
-      fig.dataset.id = b.id;
-      fig.dataset.alt = b.alt;
-
-      const img = document.createElement('img');
-      img.dataset.poza = b.id;
-      img.alt = b.alt || (b.id[0] === 'd' ? 'desen' : 'poză');
-      fig.appendChild(img);
-
-      const bara = document.createElement('figcaption');
-      bara.className = 'ed-media__bara';
-      bara.innerHTML =
-        '<span class="ed-media__nume">' + (b.id[0] === 'd' ? 'Desen' : 'Poză') + '</span>' +
-        '<button type="button" class="ed-media__btn" data-act="sterge">Șterge</button>';
-      fig.appendChild(bara);
-      flux.appendChild(fig);
+      flux.appendChild(umpleFiguraMedia(document.createElement('figure'),
+                                        b.id, b.alt, urlPoze.get(b.id)));
     });
 
     // o singură casetă înseamnă notiță fără imagini: îi dăm toată pagina
@@ -940,6 +1213,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     const ok = await confirmDialog(eDesen ? 'Ștergi desenul?' : 'Ștergi poza?',
       'Dispare din notiță. Textul din jur rămâne neatins.', 'Șterge');
     if (!ok) return;
+    // dacă tocmai se desena în blocul ăsta, nu-l mai salvăm la loc
+    if (desen && desen.fig === fig) { desen = null; clearTimeout(cronoDesen); }
 
     const unde = $$('#editorFlux > *').indexOf(fig);
     if (unde < 1) return;
@@ -1742,6 +2017,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   }
 
   function renderEditor() {
+    incheieDesenul();                   // desenul în lucru se salvează întâi
     const note = activeNote();
     const ed = $('#editor'), empty = $('#emptyState');
     if (!note) { ed.hidden = true; empty.hidden = false; return; }
@@ -1762,6 +2038,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   }
 
   function setPreview(on) {
+    if (on) incheieDesenul();           // în previzualizare nu se mai desenează
     ui.preview = !!on;
     const note = activeNote();
     $('#previewBtn').setAttribute('aria-pressed', String(ui.preview));
@@ -4038,13 +4315,36 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       if (!b) return;
       const fig = b.closest('.ed-media');
       if (b.dataset.act === 'sterge') stergeMedia(fig);
+      else if (b.dataset.act === 'deseneaza') activeazaDesen(fig);
     });
+    // pe calculator, două apăsări pe desen îl redeschid — e drumul scurt
+    pe('#editorFlux', 'dblclick', e => {
+      const img = e.target.closest('.ed-desen img');
+      if (img) activeazaDesen(img.closest('.ed-media'));
+    });
+
+    /* ---------- desen ---------- */
+    // O apăsare în altă parte a paginii încheie desenul și îl salvează. Ferestrele
+    // care se deschid din bara desenului („Ștergi liniile?”, alegătorul de culoare)
+    // nu se pun: ele fac parte din desen, chiar dacă stau peste pagină.
+    document.addEventListener('pointerdown', e => {
+      if (!desen) return;
+      const t = e.target;
+      if (t && t.closest && (t.closest('.ed-desen.is-activ') || t.closest('dialog'))) return;
+      incheieDesenul();
+    }, true);
+
+    // la ieșirea din aplicație desenul nu se pierde
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) salveazaDesenulInLucru();
+    });
+    window.addEventListener('pagehide', salveazaDesenulInLucru);
 
     // la rotirea telefonului textul se rupe altfel pe rânduri
     let cronoCasete = null;
     window.addEventListener('resize', () => {
       clearTimeout(cronoCasete);
-      cronoCasete = setTimeout(potrivesteCasetele, 120);
+      cronoCasete = setTimeout(() => { potrivesteCasetele(); masoaraPanza(); }, 120);
     });
 
     // continuare automată a listelor la Enter
@@ -4146,42 +4446,8 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         if (activeNote()) $('#pozaInput').click();
         return;
       }
-      if (b.id === 'desenBtn') { deschideDesenul(); return; }
+      if (b.id === 'desenBtn') { desenNou(); return; }
       applyMd(b.dataset.md);
-    });
-
-    /* ---------- desen ---------- */
-    pe('#desenInchide', 'click', () => $('#desenDlg').close());
-    pe('#desenInchide2', 'click', () => $('#desenDlg').close());
-    // Vestea închiderii vine cu întârziere. Dacă între timp ai redeschis
-    // desenul, nu avem voie să ștergem starea proaspătă — de aceea întrebăm
-    // fereastra dacă chiar e închisă acum, nu ne luăm după eveniment.
-    pe('#desenDlg', 'close', () => {
-      const dlg = $('#desenDlg');
-      if (!dlg || !dlg.open) desen = null;
-    });
-    pe('#desenSalveaza', 'click', salveazaDesenul);
-    pe('#desenGrosime', 'input', e => {
-      if (!desen) return;
-      desen.grosime = Math.min(GROSIME_MAX, Math.max(GROSIME_MIN, +e.target.value || 1));
-      actualizeazaBulina();
-    });
-    pe('#desenOricare', 'input', e => {
-      if (!desen) return;
-      desen.culoare = e.target.value;
-      if (desen.pensula === 'radiera') desen.pensula = 'pix';
-      randeazaUnelteDesen();
-    });
-    pe('#desenInapoi', 'click', () => {
-      if (!desen || !desen.linii.length) return;
-      desen.linii.pop();
-      redeseneaza();
-    });
-    pe('#desenSterge', 'click', async () => {
-      if (!desen || !desen.linii.length) return;
-      const ok = await confirmDialog('Ștergi tot desenul?',
-        'Cele ' + desen.linii.length + ' linii vor dispărea.', 'Șterge');
-      if (ok && desen) { desen.linii = []; redeseneaza(); }
     });
 
     pe('#pozaInput', 'change', async e => {
