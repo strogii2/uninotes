@@ -731,19 +731,28 @@ kbd{
   z-index:80;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;
   padding-bottom:env(safe-area-inset-bottom);
 }
+/* Notificările erau o pastilă neagră inversată — arătau ca venite din altă
+   aplicație. Acum sunt din aceleași culori ca restul: fundal de panou, contur
+   subțire, iar semnul din față ia albastrul aplicației. */
 .toast{
   display:flex;align-items:center;gap:9px;
   padding:10px 16px;border-radius:var(--r-full);
-  background:var(--fg);color:var(--bg);
+  background:var(--surface);color:var(--fg);
+  border:1px solid var(--border);
   font-size:13.5px;font-weight:500;box-shadow:var(--sh-3);
   animation:toastIn .28s var(--ease-out-back);
 }
 .toast.is-out{animation:toastOut .2s var(--ease) forwards}
 .toast .ic{width:16px;height:16px;stroke-width:2.4}
-.toast--ok .ic{color:#4ADE80}
-.toast--err .ic{color:#FCA5A5}
-.toast button{pointer-events:auto;color:inherit;font-weight:700;font-size:13px;text-decoration:underline;opacity:.85}
-.toast button:hover{opacity:1}
+.toast--ok .ic{color:var(--primary)}
+.toast--err .ic{color:var(--danger)}
+/* vestea proastă merită un semn în plus, dar tot din paleta aplicației */
+.toast--err{border-color:color-mix(in srgb,var(--danger) 40%,var(--border))}
+.toast button{
+  pointer-events:auto;color:var(--primary);font-weight:700;font-size:13px;
+  text-decoration:underline;
+}
+.toast button:hover{color:var(--primary-hover)}
 @keyframes toastIn{from{opacity:0;transform:translateY(14px) scale(.94)}}
 @keyframes toastOut{to{opacity:0;transform:translateY(8px) scale(.96)}}
 
