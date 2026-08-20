@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 31;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 32;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -4377,8 +4377,14 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
      ---------------------------------------------------------- */
   const CHEIE_MOODLE = 'uninotes.moodle-jeton';
   let functiiMoodle = [];              // ce știe să facă Moodle-ul facultății tale
+  let stiuFunctiile = false;           // ...dacă am apucat să aflăm
 
-  const areFunctia = n => functiiMoodle.indexOf(n) >= 0;
+  /**
+   * Când nu știm lista funcțiilor — fiindcă Moodle nu ne-a lăsat nici măcar
+   * să ne prezentăm — încercăm oricum. Mai bine o cerere refuzată în tăcere
+   * decât să nu aducem nimic doar fiindcă n-avem lista.
+   */
+  const areFunctia = n => !stiuFunctiile || functiiMoodle.indexOf(n) >= 0;
 
   const curataHtml = h => String(h || '')
     .replace(/<br\s*\/?>/gi, ' ')
@@ -4389,14 +4395,33 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     .replace(/\s+/g, ' ')
     .trim();
 
+  /* Cererile pe care Moodle le poate refuza fiindcă nu sunt în serviciul cheii. */
+  const REFUZ_ACCES = /accessexception|nopermissions|requirecoursemembership|invalidparameter|servicenotavailable|invalidrecord/i;
+  const eRefuzDeAcces = e => REFUZ_ACCES.test(String((e && e.codMoodle) || (e && e.message) || ''));
+
+  /* Ce e fiecare cerere, pe înțeles — ca să nu-ți spunem un nume de funcție. */
+  const CE_CERE = {
+    core_webservice_get_site_info: 'să mă prezint',
+    core_enrol_get_users_courses: 'lista cursurilor tale',
+    core_course_get_enrolled_courses_by_timeline_classification: 'lista cursurilor tale',
+    core_calendar_get_action_events_by_timesort: 'termenele din calendar',
+    mod_assign_get_assignments: 'temele',
+    gradereport_user_get_grade_items: 'notele',
+    core_course_get_contents: 'materialele',
+    mod_forum_get_forums_by_courses: 'anunțurile',
+    mod_forum_get_forum_discussions: 'anunțurile',
+    mod_forum_get_forum_discussions_paginated: 'anunțurile'
+  };
+
   /** Moodle răspunde cu 200 și pentru greșeli, deci verificăm în conținut. */
-  function mesajMoodle(d) {
+  function mesajMoodle(d, functie) {
     const cod = String(d.errorcode || '');
     const text = String(d.message || '');
+    const ce = CE_CERE[functie] || functie || 'ce am cerut';
     if (cod === 'invalidtoken' || /invalid token/i.test(text))
       return 'Cheia nu e bună sau a expirat. Ia-o din nou din Moodle, de la Chei de securitate.';
-    if (cod === 'accessexception' || cod === 'nopermissions')
-      return 'Cheia asta n-are voie la ce am cerut.';
+    if (REFUZ_ACCES.test(cod))
+      return 'Moodle n-a lăsat cheia la ' + ce + '.';
     if (/web ?service/i.test(text) && /disab|enable|not available/i.test(text))
       return 'Facultatea ta n-a pornit serviciile web în Moodle. ' +
              'Rămâne varianta cu calendarul, mai jos.';
@@ -4429,7 +4454,12 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     if (!r || !r.ok) throw new Error((r && r.eroare) || 'Moodle n-a răspuns.');
     tineMinteAdresa(r.site);
     const d = r.raspuns;
-    if (d && d.exception) throw new Error(mesajMoodle(d));
+    if (d && d.exception) {
+      const e = new Error(mesajMoodle(d, functie));
+      e.codMoodle = String(d.errorcode || '');   // ca să știm dacă merită altă cale
+      e.functie = functie;
+      throw e;
+    }
     return d;
   }
 
@@ -4553,10 +4583,27 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     return { jeton: r.token, site: String(r.site || site) };
   }
 
-  /** Se prezintă la Moodle și află ce funcții are pornite facultatea. */
+  /**
+   * Se prezintă la Moodle și află ce funcții are pornite facultatea.
+   *
+   * Unele facultăți dau chei tăiate: cheia e bună, dar serviciul din care face
+   * parte n-are înăuntru chiar toate cererile. Înainte, un refuz aici oprea
+   * totul — deși cheia putea foarte bine să aibă voie la cursuri și la termene.
+   * Acum, dacă nu ne lasă să ne prezentăm, mergem mai departe fără carte de
+   * vizită și încercăm restul.
+   */
   async function conecteazaMoodle() {
-    const info = await moodleApel('core_webservice_get_site_info');
+    let info = null;
+    try {
+      info = await moodleApel('core_webservice_get_site_info');
+    } catch (e) {
+      if (!eRefuzDeAcces(e)) throw e;
+      functiiMoodle = [];
+      stiuFunctiile = false;
+      return null;
+    }
     functiiMoodle = ((info && info.functions) || []).map(f => f.name);
+    stiuFunctiile = functiiMoodle.length > 0;
     const m = moodle();
     m.nume = String((info && (info.fullname || info.username)) || '').slice(0, 80);
     m.siteNume = String((info && info.sitename) || '').slice(0, 80);
@@ -4568,6 +4615,87 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   }
 
   /**
+   * Lista cursurilor, pe oricare drum e deschis.
+   *
+   * Moodle are mai multe cereri care duc în același loc, iar facultățile nu le
+   * pornesc pe toate. Le încercăm pe rând și ne oprim la prima care răspunde;
+   * un refuz nu mai înseamnă „gata, nu se poate", ci „încearcă pe cealaltă ușă".
+   */
+  async function aduCursurile(userid) {
+    const cai = [];
+    if (userid) {
+      cai.push(['core_enrol_get_users_courses', { userid: userid },
+                r => r || []]);
+    }
+    cai.push(['core_course_get_enrolled_courses_by_timeline_classification',
+              { classification: 'all', limit: 0, offset: 0, sort: 'fullname' },
+              r => (r && r.courses) || []]);
+
+    let ultima = null;
+    for (const [functie, param, scoate] of cai) {
+      if (!areFunctia(functie)) continue;
+      try {
+        const lista = (scoate(await moodleApel(functie, param)) || [])
+          .filter(c => c && c.id);
+        if (lista.length) return lista;
+      } catch (e) {
+        if (!eRefuzDeAcces(e)) throw e;
+        ultima = e;
+      }
+    }
+
+    // ultima cale: cursurile care apar în termenele din calendar. Nu le prinde
+    // pe cele fără nimic de predat, dar tot e mai mult decât nimic.
+    const evenimente = await aduTermeneDinCalendar();
+    const dupaId = {};
+    evenimente.forEach(ev => {
+      if (ev.cursId && !dupaId[ev.cursId]) {
+        dupaId[ev.cursId] = { id: ev.cursId, fullname: ev.cursNume, shortname: '' };
+      }
+    });
+    const dinCalendar = Object.keys(dupaId).map(k => dupaId[k]);
+    if (dinCalendar.length) return dinCalendar;
+    if (ultima) {
+      throw new Error(
+        'Cheia asta n-are voie nici la cursuri, nici la calendar — deci nu e ' +
+        'de la serviciul pentru aplicația de mobil. Ia-o din nou din Moodle ' +
+        '(Preferințe → Chei de securitate), de pe rândul acelui serviciu. Cel ' +
+        'mai simplu e însă să scrii sus utilizatorul și parola: cheia o cer eu, ' +
+        'de la serviciul bun, iar parola nu se salvează nicăieri.');
+    }
+    return [];
+  }
+
+  /**
+   * Termenele direct din calendarul Moodle — de aici le ia și aplicația
+   * oficială pentru „Cronologie". Merge și când cheia n-are voie la teme,
+   * fiindcă e altă cerere, cu alte drepturi.
+   */
+  async function aduTermeneDinCalendar() {
+    if (!areFunctia('core_calendar_get_action_events_by_timesort')) return [];
+    const acum = Math.floor(Date.now() / 1000) - 3 * 86400;   // și ce tocmai a trecut
+    let r;
+    try {
+      r = await moodleApel('core_calendar_get_action_events_by_timesort',
+                           { timesortfrom: acum, limitnum: 50 });
+    } catch (e) {
+      if (!eRefuzDeAcces(e)) throw e;
+      return [];
+    }
+    return ((r && r.events) || []).map(ev => ({
+      // pentru teme folosim numărul temei, ca să nu se adauge de două ori dacă
+      // aceeași temă vine și pe drumul celălalt
+      id: (ev.modulename === 'assign' && ev.instance) ? ev.instance : 'ev' + ev.id,
+      nume: String((ev.activityname || ev.name) || '').slice(0, 80),
+      termen: ev.timesort ? caData(new Date(ev.timesort * 1000)) : '',
+      descriere: curataHtml(ev.description).slice(0, 200),
+      cursId: (ev.course && ev.course.id) || 0,
+      cursNume: String((ev.course && (ev.course.fullname || ev.course.shortname)) || '')
+        .slice(0, 80)
+    })).filter(x => x.nume && x.termen);
+  }
+
+  /**
    * Aduce tot ce se poate despre fiecare materie. Fiecare bucată e cerută
    * separat și, dacă facultatea n-o are pornită, lipsește doar ea — restul
    * vine oricum. De asta întrebăm întâi ce funcții există.
@@ -4575,12 +4703,18 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
   async function aduTotDinMoodle(spune) {
     spune('Mă prezint la Moodle…');
     const info = await conecteazaMoodle();
-    const userid = +info.userid || 0;
+    const userid = +(info && info.userid) || 0;
 
     spune('Iau lista cursurilor…');
-    const brute = await moodleApel('core_enrol_get_users_courses', { userid: userid });
-    const lista = (brute || []).filter(c => c && c.id);
+    const lista = await aduCursurile(userid);
     if (!lista.length) throw new Error('Contul nu e înscris la niciun curs.');
+
+    // termenele din calendar: le luăm o dată, pentru toate materiile deodată
+    spune('Iau termenele…');
+    const dinCalendar = {};
+    (await aduTermeneDinCalendar()).forEach(ev => {
+      (dinCalendar[ev.cursId] = dinCalendar[ev.cursId] || []).push(ev);
+    });
 
     const idCursuri = {};
     lista.forEach((c, i) => { idCursuri['courseids[' + i + ']'] = c.id; });
@@ -4627,6 +4761,13 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
           termen: a.duedate ? caData(new Date(a.duedate * 1000)) : '',
           descriere: curataHtml(a.intro).slice(0, 200)
         });
+      });
+
+      // ce a venit din calendar și nu era deja între teme
+      (dinCalendar[c.id] || []).forEach(ev => {
+        if (curs.teme.some(t => String(t.id) === String(ev.id))) return;
+        curs.teme.push({ id: ev.id, nume: ev.nume, termen: ev.termen,
+                         descriere: ev.descriere });
       });
 
       if (areFunctia('gradereport_user_get_grade_items')) {
@@ -5311,8 +5452,11 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       // Tăcerea era o capcană: dacă cheia expira, aplicația se oprea din
       // actualizat și n-avea cine să-ți spună. Însemnăm ce s-a întâmplat.
       const text = e.message || '';
-      moodle().problema = /cheia nu e bun|expirat|invalidtoken/i.test(text)
-        ? 'cheie' : 'retea';
+      // un refuz de acces nu e o pană de rețea: acolo ai tu ceva de făcut cu
+      // cheia, deci se cuvine spus la fel de apăsat ca o cheie expirată
+      moodle().problema =
+        (/cheia nu e bun|expirat|invalidtoken/i.test(text) || eRefuzDeAcces(e) ||
+         /n-are voie|n-a lăsat cheia/i.test(text)) ? 'cheie' : 'retea';
       moodle().problemaText = text.slice(0, 200);
       persist();
       renderSidebar();
