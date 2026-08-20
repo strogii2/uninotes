@@ -46,10 +46,57 @@ FUNCTII = [
     "mod_forum_get_forum_discussions",
     "gradereport_user_get_grade_items",
     "core_course_get_contents",
+    "core_course_get_enrolled_courses_by_timeline_classification",
+    "core_calendar_get_action_events_by_timesort",
+]
+
+
+REFUZ = {"exception": "webservice_access_exception", "errorcode": "accessexception",
+         "message": "Access control exception (webservice_access_exception)"}
+
+# ce rămâne pornit când facultatea dă o cheie cu drepturi tăiate
+FUNCTII_TAIATE = [
+    "core_webservice_get_site_info",
+    "core_course_get_enrolled_courses_by_timeline_classification",
+    "core_calendar_get_action_events_by_timesort",
 ]
 
 
 def raspunde(functie, camp):
+    fel = MOD["fel"]
+    # ---- chei cu drepturi tăiate: cheia e bună, dar serviciul ei e mai sărac ----
+    if fel == "nimic":
+        return REFUZ
+    if fel == "doar_calendar" and functie != "core_calendar_get_action_events_by_timesort":
+        return REFUZ                       # nici măcar prezentarea nu merge
+    if fel == "fara_enrol":
+        if functie == "core_enrol_get_users_courses":
+            return REFUZ
+        if functie == "core_webservice_get_site_info":
+            return {"sitename": "Moodle Facultatea de Probă", "username": "student1",
+                    "fullname": "Dragoș Carp", "userid": 77,
+                    "functions": [{"name": n, "version": "4.4"} for n in FUNCTII_TAIATE]}
+
+    if functie == "core_course_get_enrolled_courses_by_timeline_classification":
+        return {"courses": [
+            {"id": 101, "shortname": "AM1", "fullname": "Analiză Matematică"},
+            {"id": 102, "shortname": "GC", "fullname": "Grafică pe Calculator"},
+        ]}
+
+    if functie == "core_calendar_get_action_events_by_timesort":
+        return {"events": [
+            # aceeași temă ca la mod_assign: nu trebuie să se adauge de două ori
+            {"id": 7001, "name": "Tema 2 — integrale este scadentă",
+             "activityname": "Tema 2 — integrale", "modulename": "assign",
+             "instance": 5001, "timesort": VIITOR, "description": "",
+             "course": {"id": 101, "fullname": "Analiză Matematică", "shortname": "AM1"}},
+            # și una care vine numai pe drumul ăsta, dintr-o materie numai a lui
+            {"id": 7002, "name": "Lucrare de laborator", "activityname": "Lucrare de laborator",
+             "modulename": "quiz", "instance": 6001, "timesort": VIITOR,
+             "description": "<p>Aduceți <b>caietul</b>.</p>",
+             "course": {"id": 103, "fullname": "Chimie Organică", "shortname": "CO"}},
+        ]}
+
     if functie == "core_webservice_get_site_info":
         return {
             "sitename": "Moodle Facultatea de Probă",
@@ -420,6 +467,32 @@ def probe(window):
         out["cu_cheia_de_mana"] = citeste(window.evaluate_js(CONT))
         conecteaza(window, site, "cheiegresita")
         out["cheie_gresita"] = citeste(window.evaluate_js(CONT))
+
+        # ---- chei cu drepturi tăiate: un refuz nu mai oprește totul ----
+        def cu_cheie_taiata(fel):
+            MOD["fel"] = fel
+            conecteaza(window, site, CHEIE_BUNA)
+            return citeste(window.evaluate_js(
+                "JSON.stringify({stare: (document.querySelector('#moodleContStare')||{}).textContent,"
+                " rau: document.querySelector('#moodleContStare').classList.contains('e-rau'),"
+                " materii: Array.prototype.slice.call(document.querySelectorAll('.mcurs__nume'))"
+                "   .map(function (x) { return x.textContent; })})"))
+
+        # cheia n-are voie la lista de cursuri, dar are la cea din „Cronologie”
+        out["fara_enrol"] = cu_cheie_taiata("fara_enrol")
+
+        # nici măcar prezentarea nu merge: rămâne calendarul, și tot iese ceva
+        out["doar_calendar"] = cu_cheie_taiata("doar_calendar")
+        date = date_de_pe_disc()
+        out["materie_din_calendar"] = any(
+            s.get("name") == "Chimie Organică" for s in date.get("subjects") or [])
+        out["termen_din_calendar"] = [
+            t["titlu"] for t in date.get("termene") or []
+            if (t.get("sursa") or "").startswith("moodle:tema:ev")]
+
+        # cheia nu are voie nicăieri: se spune limpede ce e de făcut
+        out["nimic"] = cu_cheie_taiata("nimic")
+        MOD["fel"] = "normal"
 
         out["eroare_final"] = window.evaluate_js("window.__eroare || ''")
     except Exception as exc:                                  # noqa: BLE001
