@@ -32,6 +32,74 @@ MAX_CALENDAR = 5 * 1024 * 1024          # un calendar de facultate are sub 1 MB
 MAX_RASPUNS = 8 * 1024 * 1024           # un răspuns Moodle e de ordinul zecilor de KB
 ORE_INTRE_COPII = 6                     # cât de des se pune deoparte o copie
 MAX_COPII = 12                          # câte copii ținem (vreo trei zile în urmă)
+MUTARI = (301, 302, 303, 307, 308)      # felurile în care un server spune „m-am mutat"
+MAX_MUTARI = 4                          # de câte ori mergem după o adresă mutată
+
+LOCALE = ("localhost", "127.0.0.1", "::1")
+
+
+class _NuUrma(urllib.request.HTTPRedirectHandler):
+    """Oprește urmărirea automată a mutărilor: hotărâm noi ce facem cu ele."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _postare(url, camp, timeout, limita):
+    """
+    Trimite un formular prin POST și întoarce (cod, corp, adresa nouă).
+    Nu urmează mutările — le dă mai departe, ca să hotărască cine a chemat.
+    """
+    cerere = urllib.request.Request(
+        url, data=urllib.parse.urlencode(camp).encode("utf-8"),
+        headers={"User-Agent": "UniNotes",
+                 "Content-Type": "application/x-www-form-urlencoded"})
+    deschizator = urllib.request.build_opener(_NuUrma)
+    try:
+        with deschizator.open(cerere, timeout=timeout) as r:
+            return r.getcode(), r.read(limita + 1), None
+    except urllib.error.HTTPError as e:
+        try:
+            corp = e.read(limita + 1)
+        except Exception:                                         # noqa: BLE001
+            corp = b""
+        loc = e.headers.get("Location") if e.code in MUTARI else None
+        return e.code, corp, loc
+
+
+def trimite_la_moodle(site, cale, camp, timeout=30, limita=MAX_RASPUNS):
+    """
+    Trimite o cerere la Moodle și, dacă serverul răspunde „adresa s-a mutat",
+    o trimite din nou — cu tot cu date — la adresa nouă.
+
+    Python urmează mutările singur, dar pe drum preface POST-ul în GET și lasă
+    datele acasă. Moodle primea o cerere goală și se plângea că lipsește
+    „username", deși noi îl trimisesem. Exact asta pățea moodle.usm.md, care e
+    mutat la elearning.usm.md: omul scria utilizatorul, iar aplicația îi spunea
+    că nu l-a scris.
+
+    Întoarce {"corp":…, "site":…} — unde „site" e adresa adevărată, cea de la
+    capătul mutărilor — sau {"eroare":…}.
+    """
+    site = str(site or "").strip().rstrip("/")
+    for _ in range(MAX_MUTARI):
+        cod, corp, loc = _postare(site + cale, camp, timeout, limita)
+        if not loc:
+            return {"cod": cod, "corp": corp, "site": site}
+
+        nou = urllib.parse.urljoin(site + cale, loc)
+        parte = urllib.parse.urlparse(nou)
+        if parte.scheme != "https" and (parte.hostname or "") not in LOCALE:
+            # datele noastre n-au ce căuta pe o legătură necriptată
+            return {"eroare": "Moodle-ul trimite mai departe la o adresă necriptată "
+                              "(%s). Nu trimit datele acolo." % nou}
+        if not parte.path.endswith(cale):
+            # mutat spre pagina de întâmpinare, nu spre serviciu: nu e Moodle acolo
+            return {"eroare": "Adresa e mutată la %s, care nu pare a fi un Moodle. "
+                              "Întreabă la facultate care e adresa bună." % nou}
+        site = nou[: nou.rindex(cale)].rstrip("/")
+    return {"eroare": "Adresa se tot mută de la un server la altul. "
+                      "Verifică adresa Moodle."}
 
 
 def asset_dir() -> Path:
@@ -476,26 +544,26 @@ class Api:
         if not site.lower().startswith(("http://", "https://")):
             return {"ok": False, "eroare": "Adresa trebuie să înceapă cu https://"}
 
+        mutat = {"la": ""}
+
         def intreaba(cale, camp):
-            cerere = urllib.request.Request(
-                site + cale, data=urllib.parse.urlencode(camp).encode("utf-8"),
-                headers={"User-Agent": "UniNotes",
-                         "Content-Type": "application/x-www-form-urlencoded"})
             try:
-                with urllib.request.urlopen(cerere, timeout=25) as r:
-                    brut = r.read(MAX_RASPUNS + 1)
-                    tip = r.headers.get("Content-Type", "")
-            except urllib.error.HTTPError as e:
-                return {"http": e.code}
+                r = trimite_la_moodle(site, cale, camp, timeout=25)
             except Exception as e:                                # noqa: BLE001
                 return {"retea": str(e)}
-            text = brut.decode("utf-8", errors="replace")
+            if r.get("eroare"):
+                return {"retea": r["eroare"]}
+            if r["site"] != site:
+                mutat["la"] = r["site"]
+            if r["cod"] >= 400:
+                return {"http": r["cod"]}
+            text = r["corp"].decode("utf-8", errors="replace")
             citit = self._citeste_raspuns(text)
             if citit is not None:
                 return {"json": citit}
-            return {"nu_e_json": True, "tip": tip, "inceput": text[:120]}
+            return {"nu_e_json": True, "inceput": text[:120]}
 
-        return {
+        raspuns = {
             "ok": True,
             "servicii": intreaba("/webservice/rest/server.php", {
                 "wstoken": "verificare", "wsfunction": "core_webservice_get_site_info",
@@ -503,6 +571,8 @@ class Api:
             "parola": intreaba("/login/token.php", {
                 "username": "", "password": "", "service": "moodle_mobile_app"}),
         }
+        raspuns["mutat"] = mutat["la"]
+        return raspuns
 
     def moodle_login(self, site, utilizator, parola):
         """
@@ -527,34 +597,34 @@ class Api:
         if not str(utilizator or "").strip() or not str(parola or ""):
             return {"ok": False, "eroare": "Pune și utilizatorul, și parola."}
 
-        date = urllib.parse.urlencode({
+        date = {
             "username": str(utilizator).strip(),
             "password": str(parola),
             "service": "moodle_mobile_app",
-        }).encode("utf-8")
-        cerere = urllib.request.Request(
-            site + "/login/token.php", data=date,
-            headers={"User-Agent": "UniNotes",
-                     "Content-Type": "application/x-www-form-urlencoded"})
+        }
         try:
-            with urllib.request.urlopen(cerere, timeout=30) as r:
-                brut = r.read(MAX_RASPUNS + 1)
-        except urllib.error.HTTPError as e:
-            return {"ok": False, "eroare": "Serverul a răspuns cu eroarea %s." % e.code}
+            r = trimite_la_moodle(site, "/login/token.php", date, timeout=30)
         except Exception as e:                                    # noqa: BLE001
             return {"ok": False, "eroare": "Nu am putut ajunge la Moodle: %s" % e}
         finally:
             date = None                                           # nu mai ținem parola în memorie
 
+        if r.get("eroare"):
+            return {"ok": False, "eroare": r["eroare"]}
+        if r["cod"] >= 400:
+            return {"ok": False, "eroare": "Serverul a răspuns cu eroarea %s." % r["cod"]}
+
         try:
-            raspuns = json.loads(brut.decode("utf-8", errors="replace"))
+            raspuns = json.loads(r["corp"].decode("utf-8", errors="replace"))
         except Exception:                                         # noqa: BLE001
             return {"ok": False,
                     "eroare": "Adresa nu pare a fi un Moodle. Pune doar adresa de "
                               "pornire, fără /my sau /login."}
 
         if raspuns.get("token"):
-            return {"ok": True, "token": raspuns["token"]}
+            # „site" e adresa adevărată: dacă a fost o mutare, de acum ținem minte
+            # unde a ajuns Moodle-ul, ca să nu mai treacă nimeni pe la vechea adresă
+            return {"ok": True, "token": raspuns["token"], "site": r["site"]}
         return {"ok": False, "cod": str(raspuns.get("errorcode") or ""),
                 "eroare": str(raspuns.get("error") or "Moodle n-a dat cheia.")}
 
@@ -582,19 +652,17 @@ class Api:
             for k, v in parametri.items():
                 camp[str(k)] = "" if v is None else str(v)
 
-        cerere = urllib.request.Request(
-            site + "/webservice/rest/server.php",
-            data=urllib.parse.urlencode(camp).encode("utf-8"),
-            headers={"User-Agent": "UniNotes",
-                     "Content-Type": "application/x-www-form-urlencoded"})
         try:
-            with urllib.request.urlopen(cerere, timeout=30) as r:
-                brut = r.read(MAX_RASPUNS + 1)
-        except urllib.error.HTTPError as e:
-            return {"ok": False, "eroare": "Serverul a răspuns cu eroarea %s." % e.code}
+            r = trimite_la_moodle(site, "/webservice/rest/server.php", camp, timeout=30)
         except Exception as e:                                    # noqa: BLE001
             return {"ok": False, "eroare": "Nu am putut ajunge la Moodle: %s" % e}
 
+        if r.get("eroare"):
+            return {"ok": False, "eroare": r["eroare"]}
+        if r["cod"] >= 400:
+            return {"ok": False, "eroare": "Serverul a răspuns cu eroarea %s." % r["cod"]}
+
+        brut = r["corp"]
         if len(brut) > MAX_RASPUNS:
             return {"ok": False, "eroare": "Răspuns prea mare de la Moodle."}
         citit = self._citeste_raspuns(brut.decode("utf-8", errors="replace"))
@@ -602,7 +670,7 @@ class Api:
             return {"ok": False,
                     "eroare": "Moodle n-a răspuns cu date. Verifică adresa — trebuie "
                               "să fie doar adresa de pornire, fără /my sau /login."}
-        return {"ok": True, "raspuns": citit}
+        return {"ok": True, "raspuns": citit, "site": r["site"]}
 
     # ---------- diverse ----------
     def data_folder(self):

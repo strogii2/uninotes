@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 30;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 31;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -4403,6 +4403,21 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     return text || 'Moodle a refuzat cererea.';
   }
 
+  /**
+   * Facultățile își mai mută Moodle-ul de pe o adresă pe alta și lasă în urmă
+   * o trimitere. Puntea merge după ea, iar aici ținem minte unde a ajuns —
+   * altfel fiecare cerere ar face de fiecare dată drumul pe la adresa veche.
+   */
+  function tineMinteAdresa(site) {
+    const nou = String(site || '').trim().replace(/\/+$/, '');
+    if (!nou || nou === (moodle().site || '')) return false;
+    moodle().site = nou.slice(0, 200);
+    persist();
+    const camp = $('#moodleSite');
+    if (camp) camp.value = moodle().site;
+    return true;
+  }
+
   async function moodleApel(functie, param) {
     if (!api() || !api().moodle_api) {
       throw new Error('Legătura cu contul merge doar în aplicația de pe calculator, ' +
@@ -4412,6 +4427,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     const r = await api().moodle_api((moodle().site || '').trim(),
                                      localGet(CHEIE_MOODLE), functie, param || {});
     if (!r || !r.ok) throw new Error((r && r.eroare) || 'Moodle n-a răspuns.');
+    tineMinteAdresa(r.site);
     const d = r.raspuns;
     if (d && d.exception) throw new Error(mesajMoodle(d));
     return d;
@@ -4452,6 +4468,10 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
 
     const linii = [];
     const s = r.servicii || {}, p = r.parola || {};
+    if (r.mutat) {
+      linii.push('Adresa asta s-a mutat la ' + r.mutat + ' — de acolo iau informația.');
+      tineMinteAdresa(r.mutat);
+    }
 
     if (s.retea) return { rau: true, text: mesajRetea(s.retea) };
     if (s.nu_e_json || s.http === 404) {
@@ -4530,7 +4550,7 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     }
     const r = await api().moodle_login(site, utilizator, parola);
     if (!r || !r.ok) throw new Error(mesajLogin(r));
-    return r.token;
+    return { jeton: r.token, site: String(r.site || site) };
   }
 
   /** Se prezintă la Moodle și află ce funcții are pornite facultatea. */
@@ -6055,10 +6075,13 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       stareCont('Mă conectez la Moodle…');
       $('#moodleConecteaza').disabled = true;
       try {
-        const jeton = await conecteazaCuParola(site, utilizator, campParola.value);
+        const r = await conecteazaCuParola(site, utilizator, campParola.value);
         campParola.value = '';                  // parola nu mai are ce căuta nicăieri
         moodle().utilizator = utilizator.slice(0, 60);
-        await legaSiAdu(site, jeton);
+        if (r.site !== site) {
+          stareCont('Moodle-ul facultății s-a mutat la ' + r.site + '. Folosesc adresa nouă.');
+        }
+        await legaSiAdu(r.site, r.jeton);
       } catch (e) {
         campParola.value = '';
         stareCont(e.message || 'Nu m-am putut conecta.', true);
