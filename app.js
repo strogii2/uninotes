@@ -6,7 +6,7 @@
   'use strict';
 
   const STORE_KEY = 'uninotes.v1';
-  const VERSIUNE = 32;          // se vede în bara laterală: confirmă ce versiune rulează
+  const VERSIUNE = 33;          // se vede în bara laterală: confirmă ce versiune rulează
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -4413,13 +4413,29 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     mod_forum_get_forum_discussions_paginated: 'anunțurile'
   };
 
+  /**
+   * Cheia tocmai a fost dată de Moodle, cu utilizatorul și parola.
+   *
+   * Contează, fiindcă „Moodle nu cunoaște cheia" înseamnă cu totul altceva după
+   * o cheie veche (a expirat, ia alta) decât după una de acum două secunde:
+   * atunci înseamnă că Moodle-ul facultății o dă și o uită pe loc, și n-ai ce
+   * să faci cu el pe drumul ăsta.
+   */
+  let cheieProaspata = false;
+
   /** Moodle răspunde cu 200 și pentru greșeli, deci verificăm în conținut. */
   function mesajMoodle(d, functie) {
     const cod = String(d.errorcode || '');
     const text = String(d.message || '');
     const ce = CE_CERE[functie] || functie || 'ce am cerut';
     if (cod === 'invalidtoken' || /invalid token/i.test(text))
-      return 'Cheia nu e bună sau a expirat. Ia-o din nou din Moodle, de la Chei de securitate.';
+      return cheieProaspata
+        ? 'Moodle-ul facultății mi-a dat o cheie — de asta ai primit și emailul — ' +
+          'iar o clipă mai târziu spune că n-o cunoaște. Nu e de la tine și nu e ' +
+          'de la aplicație: așa e reglat Moodle-ul de acolo, și n-am cum să-l ' +
+          'conving. Ia termenele din calendarul Moodle, mai jos: drumul acela nu ' +
+          'trece deloc pe la serviciile web și merge oricum ai intra în Moodle.'
+        : 'Cheia nu e bună sau a expirat. Ia-o din nou din Moodle, de la Chei de securitate.';
     if (REFUZ_ACCES.test(cod))
       return 'Moodle n-a lăsat cheia la ' + ce + '.';
     if (/web ?service/i.test(text) && /disab|enable|not available/i.test(text))
@@ -4441,6 +4457,20 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     const camp = $('#moodleSite');
     if (camp) camp.value = moodle().site;
     return true;
+  }
+
+  /**
+   * Când Moodle-ul facultății nu lasă aplicațiile la date, drumul care rămâne
+   * e calendarul lui: o adresă cu o cheie doar a ta, care merge fără servicii
+   * web și oricum ai intra în Moodle. O deschidem noi, ca s-o ai sub ochi în
+   * clipa în care celălalt drum s-a înfundat.
+   */
+  function deschideVariantaCalendar() {
+    const pliant = $('#moodleCalendarPliant');
+    if (!pliant) return;
+    pliant.open = true;
+    const camp = $('#moodleUrl');
+    if (camp && !camp.value) setTimeout(() => { try { camp.focus(); } catch (e) {} }, 80);
   }
 
   async function moodleApel(functie, param) {
@@ -4542,6 +4572,29 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
       linii.push('Conectarea cu parola: nu, serviciile web sunt oprite.');
     } else if (codP || mesajP) {
       linii.push('Conectarea cu parola: răspuns neașteptat (' + (codP || mesajP) + ').');
+    }
+
+    // Dacă e deja o cheie salvată, întrebăm pe loc ce zice Moodle despre ea:
+    // „n-o cunosc" și „o știu, dar n-o las nicăieri" cer lucruri diferite de la tine.
+    const cheie = localGet(CHEIE_MOODLE);
+    if (cheie && api() && api().moodle_api) {
+      try {
+        const q = await api().moodle_api(r.mutat || site, cheie,
+                                         'core_webservice_get_site_info', {});
+        const d = (q && q.ok && q.raspuns) || null;
+        const codC = String((d && d.errorcode) || '');
+        if (d && !d.exception) {
+          linii.push('Cheia salvată: merge.');
+        } else if (/invalidtoken/i.test(codC)) {
+          linii.push('Cheia salvată: Moodle nu o cunoaște. Dacă ai luat-o de curând ' +
+                     'cu parola, înseamnă că Moodle-ul facultății dă chei pe care le ' +
+                     'uită pe loc — atunci rămâne varianta cu calendarul.');
+        } else if (REFUZ_ACCES.test(codC)) {
+          linii.push('Cheia salvată: Moodle o știe, dar n-o lasă la date.');
+        } else if (codC) {
+          linii.push('Cheia salvată: răspuns neașteptat (' + codC + ').');
+        }
+      } catch (e) { /* verificarea adresei rămâne bună și fără asta */ }
     }
 
     return { rau: serviciiOprite, text: linii.join(' ') };
@@ -4656,12 +4709,14 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     const dinCalendar = Object.keys(dupaId).map(k => dupaId[k]);
     if (dinCalendar.length) return dinCalendar;
     if (ultima) {
+      deschideVariantaCalendar();
       throw new Error(
-        'Cheia asta n-are voie nici la cursuri, nici la calendar — deci nu e ' +
-        'de la serviciul pentru aplicația de mobil. Ia-o din nou din Moodle ' +
-        '(Preferințe → Chei de securitate), de pe rândul acelui serviciu. Cel ' +
-        'mai simplu e însă să scrii sus utilizatorul și parola: cheia o cer eu, ' +
-        'de la serviciul bun, iar parola nu se salvează nicăieri.');
+        'Moodle știe cheia asta, dar n-o lasă la nimic — nici la cursuri, nici ' +
+        'la calendar. Înseamnă că nu e de la serviciul pentru aplicația de mobil: ' +
+        'mai încearcă una din Moodle (Preferințe → Chei de securitate), de pe ' +
+        'rândul acelui serviciu. Dacă nici aceea nu merge, facultatea ta nu lasă ' +
+        'aplicațiile la date, și atunci ia termenele din calendarul Moodle, mai ' +
+        'jos — pe drumul acela nu are ce să te oprească.');
     }
     return [];
   }
@@ -6225,11 +6280,21 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
         if (r.site !== site) {
           stareCont('Moodle-ul facultății s-a mutat la ' + r.site + '. Folosesc adresa nouă.');
         }
-        await legaSiAdu(r.site, r.jeton);
+        // cheia e de acum două secunde: dacă Moodle zice că n-o cunoaște, e
+        // vina lui, nu a ta — iar mesajul trebuie să spună asta
+        cheieProaspata = true;
+        try {
+          await legaSiAdu(r.site, r.jeton);
+        } finally {
+          cheieProaspata = false;
+        }
       } catch (e) {
         campParola.value = '';
         stareCont(e.message || 'Nu m-am putut conecta.', true);
         $('#moodleAduTot').hidden = true;
+        if (eRefuzDeAcces(e) || /invalidtoken/i.test(String(e.codMoodle || ''))) {
+          deschideVariantaCalendar();
+        }
       } finally {
         $('#moodleConecteaza').disabled = false;
       }
@@ -6297,6 +6362,20 @@ Valoarea medie obținută: **g ≈ 9.79 m/s²**, eroare relativă sub 1%.`
     pe('#moodleClose', 'click', () => $('#moodleDlg').close());
     pe('#moodleClose2', 'click', () => $('#moodleDlg').close());
     pe('#moodleAdu', 'click', citesteDinMoodle);
+    pe('#moodleDeschideExport', 'click', () => {
+      const site = ($('#moodleSite').value || moodle().site || '').trim()
+        .replace(/\/+$/, '');
+      if (!/^https?:\/\//i.test(site)) {
+        stareMoodle('Pune întâi adresa Moodle, sus.', true);
+        return;
+      }
+      const adresa = site + '/calendar/export.php';
+      if (api() && api().open_link) api().open_link(adresa);
+      else window.open(adresa, '_blank', 'noopener');
+      stareMoodle('Am deschis pagina în browser. Alege „Toate evenimentele" și o ' +
+                  'perioadă lungă, apasă „Obține adresa URL a calendarului", apoi ' +
+                  'copiaz-o aici.');
+    });
     pe('#moodleUrl', 'keydown', e => {
       if (e.key === 'Enter') { e.preventDefault(); citesteDinMoodle(); }
     });

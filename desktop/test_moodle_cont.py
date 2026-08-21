@@ -31,6 +31,8 @@ import webview
 import main as app
 
 CHEIE_BUNA = "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"
+# cheia pe care Moodle o dă și n-o mai recunoaște — nu e în nicio listă a lui
+CHEIE_UITATA = "9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f"
 UTILIZATOR = "carp.dragos"
 PAROLA = "ParolaMeaSecreta!2026"
 
@@ -229,7 +231,10 @@ class Server(BaseHTTPRequestHandler):
 
         if cale == "/login/token.php":
             if camp.get("username") == UTILIZATOR and camp.get("password") == PAROLA:
-                corp = {"token": CHEIE_BUNA, "privatetoken": None}
+                # „cheie_uitata": exact ce face Moodle-ul USM — dă o cheie, trimite
+                # și emailul de rigoare, iar o clipă mai târziu spune că n-o cunoaște
+                corp = {"token": CHEIE_UITATA if fel == "cheie_uitata" else CHEIE_BUNA,
+                        "privatetoken": None}
             else:
                 corp = {"error": "Invalid login, please try again",
                         "errorcode": "invalidlogin", "stacktrace": None}
@@ -362,6 +367,15 @@ def probe(window):
         time.sleep(1.2)
         out["nelegat_la_inceput"] = citeste(window.evaluate_js(CONT))
 
+        # butonul care duce la pagina de export a calendarului nu are voie să
+        # deschidă nimic dacă adresa nu e o adresă — spune ce lipsește
+        out["export_fara_adresa"] = window.evaluate_js("""
+            document.querySelector('#moodleCalendarPliant').open = true;
+            document.querySelector('#moodleSite').value = 'nu e o adresa';
+            document.querySelector('#moodleDeschideExport').click();
+            (document.querySelector('#moodleStare') || {}).textContent
+        """)
+
         # ---- „Verifică adresa”: spune ce e pornit, fără cont și fără cheie ----
         def verifica(fel):
             MOD["fel"] = fel
@@ -492,6 +506,21 @@ def probe(window):
 
         # cheia nu are voie nicăieri: se spune limpede ce e de făcut
         out["nimic"] = cu_cheie_taiata("nimic")
+
+        # ---- Moodle dă cheia și o uită pe loc (cazul de la USM) ----
+        # Nu e o cheie expirată și nu e vina omului: mesajul trebuie s-o spună,
+        # iar drumul care rămâne — calendarul — trebuie deschis, nu căutat.
+        MOD["fel"] = "cheie_uitata"
+        intra_cu_parola(window, site, UTILIZATOR, PAROLA, 7)
+        out["cheie_uitata"] = citeste(window.evaluate_js(
+            "JSON.stringify({stare: (document.querySelector('#moodleContStare')||{}).textContent,"
+            " rau: document.querySelector('#moodleContStare').classList.contains('e-rau'),"
+            " calendarDeschis: !!(document.querySelector('#moodleCalendarPliant')||{}).open})"))
+        # aceeași cheie, dar veche, nu are voie să dea aceeași explicație
+        MOD["fel"] = "normal"
+        conecteaza(window, site, "cheiegresita")
+        out["cheie_veche_alt_mesaj"] = window.evaluate_js(
+            "(document.querySelector('#moodleContStare')||{}).textContent")
         MOD["fel"] = "normal"
 
         out["eroare_final"] = window.evaluate_js("window.__eroare || ''")
