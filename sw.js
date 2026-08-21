@@ -4,7 +4,7 @@
    și să meargă fără internet după prima deschidere.
    ============================================================ */
 
-const CACHE = 'uninotes-v32';
+const CACHE = 'uninotes-v33';
 
 /**
  * Cele trei fișiere de mai jos trebuie să fie din aceeași versiune, altfel

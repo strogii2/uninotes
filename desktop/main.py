@@ -7,6 +7,7 @@ fișier JSON de pe disc, lângă aplicație.
 """
 
 import base64
+import hashlib
 import html
 import http.server
 import json
@@ -152,12 +153,29 @@ DATA_DIR = resolve_data_dir()
 DATA_FILE = DATA_DIR / "notite.json"
 
 
+def port_statornic() -> int:
+    """
+    Același port la fiecare pornire, ales din calea notițelor.
+
+    Browserul dinăuntru leagă tot ce ține minte singur — cheia de Moodle, între
+    altele — de adresa paginii, iar adresa cuprinde și portul. Cu port ales de
+    sistem, fiecare pornire deschidea alt sertar, gol: cheia părea pierdută și
+    trebuia luată din nou de fiecare dată. Portul iese din calea notițelor, deci
+    două copii ale aplicației, cu notițe diferite, nu se calcă pe picioare.
+
+    Stă sub 49152, ca să nu se bată cu porturile pe care Windows le împarte
+    singur programelor care ies în lume.
+    """
+    amprenta = hashlib.sha256(str(DATA_DIR).lower().encode("utf-8")).digest()
+    return 40000 + int.from_bytes(amprenta[:2], "big") % 9000
+
+
 def start_local_server() -> int:
     """
     Servim interfața pe 127.0.0.1, nu din file://, din două motive:
     WebView2 refuză „?parametru” la URL-urile file://, iar puntea pywebview
     apare abia după window.load — așa aplicația știe din prima că e desktop.
-    Portul e ales de sistem și ascultă doar local.
+    Ascultă doar local, pe portul statornic de mai sus.
     """
     root = str(asset_dir())
 
@@ -168,7 +186,16 @@ def start_local_server() -> int:
         def log_message(self, *args):        # fără zgomot în consolă
             pass
 
-    httpd = socketserver.TCPServer(("127.0.0.1", 0), Handler)
+    httpd = None
+    dorit = port_statornic()
+    for pas in range(8):                     # dacă e ocupat, încercăm vecinii
+        try:
+            httpd = socketserver.TCPServer(("127.0.0.1", dorit + pas), Handler)
+            break
+        except OSError:
+            continue
+    if httpd is None:                        # ultima soluție: orice port liber
+        httpd = socketserver.TCPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd.server_address[1]
 
