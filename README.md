@@ -252,9 +252,14 @@ aplicația deschide notița în browserul implicit, ca să poți printa oricum.
 
 Fereastra e nativă (WinForms), iar interfața e randată de **Edge WebView2** — motorul deja
 prezent în Windows 11. De asta executabilul are 13 MB și nu 200: nu împachetează un browser
-propriu. Interfața se servește pe `127.0.0.1`, pe un port ales de sistem, care ascultă doar
-local. Partea de Python se ocupă doar de fișiere: citire, scriere atomică și dialogurile
-native de salvare/deschidere.
+propriu. Interfața se servește pe `127.0.0.1`, care ascultă doar local. Partea de Python se
+ocupă doar de fișiere: citire, scriere atomică și dialogurile native de salvare/deschidere.
+
+Portul nu e ales de sistem, ci iese din calea folderului cu notițe, deci e mereu același.
+Contează fiindcă WebView2 leagă tot ce ține minte singur — cheia de Moodle, între altele —
+de adresa paginii, iar adresa cuprinde și portul: cu port schimbător, fiecare pornire
+deschidea alt sertar, gol, și cheia părea pierdută de fiecare dată. Dacă portul e ocupat,
+se încearcă vecinii lui.
 
 ## Dacă vrei s-o modifici și s-o recompilezi
 
